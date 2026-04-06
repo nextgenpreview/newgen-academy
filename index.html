@@ -16,7 +16,6 @@
             overflow: hidden;
         }
 
-        /* The Big Visual Board */
         #visual-board {
             position: absolute;
             top: 0;
@@ -34,21 +33,19 @@
             align-items: center;
         }
 
-        /* Container for YouTube Iframe */
         #video-container {
             width: 100%;
             height: 100%;
-            display: none; /* Hidden by default */
+            display: none;
         }
         
         #video-container iframe {
             width: 100%;
             height: 100%;
             border: none;
-            pointer-events: none; /* Prevents user from clicking/pausing the video manually */
+            pointer-events: none;
         }
 
-        /* UI Overlay */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -98,7 +95,6 @@
             pointer-events: auto;
         }
 
-        /* Microphone Button */
         #mic-btn {
             width: 80px;
             height: 80px;
@@ -164,13 +160,12 @@
         // CONFIGURATION
         // ==========================================
         const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/";
-        
-        // GET A FREE KEY: Go to Google Cloud Console -> Enable YouTube Data API v3 -> Generate Credentials
-        const YOUTUBE_API_KEY = "AIzaSyBoIWaJcPclV4dR9Pi9KPNUsS1kR3SSbZ0"; 
+        const YOUTUBE_API_KEY = "PASTE_YOUR_YOUTUBE_API_KEY_HERE"; 
 
         // State Variables
         let isSessionLive = false;
         let recognition;
+        let conversationHistory = []; // Tracks the ongoing conversation
         
         // UI Elements
         const micBtn = document.getElementById('mic-btn');
@@ -195,6 +190,7 @@
             });
 
             recognition.onresult = async (event) => {
+                // Instantly silence Ken if the user interrupts
                 if (window.speechSynthesis.speaking) {
                     window.speechSynthesis.cancel();
                 }
@@ -213,6 +209,7 @@
             };
             
             recognition.onend = () => {
+                // Ensure the mic stays completely active during the live session
                 if (isSessionLive) recognition.start();
             };
         } else {
@@ -225,6 +222,7 @@
         micBtn.addEventListener('click', () => {
             if (!isSessionLive) {
                 isSessionLive = true;
+                conversationHistory = []; // Reset memory on new session
                 micBtn.classList.add('active');
                 recognition.start();
                 
@@ -249,6 +247,14 @@
             const gradeLevel = gradeSelector.value;
             const selectedLanguage = languageSelector.options[languageSelector.selectedIndex].text;
 
+            // Add user message to memory
+            conversationHistory.push({ role: "user", content: message });
+            
+            // Keep memory manageable (last 8 messages) to avoid breaking API limits
+            if (conversationHistory.length > 8) {
+                conversationHistory = conversationHistory.slice(-8);
+            }
+
             try {
                 const response = await fetch(WORKER_URL, {
                     method: "POST",
@@ -256,7 +262,7 @@
                     body: JSON.stringify({
                         grade: gradeLevel,
                         language: selectedLanguage,
-                        message: message
+                        messages: conversationHistory
                     })
                 });
 
@@ -275,37 +281,36 @@
         }
 
         // ==========================================
-        // RESPONSE PARSING & VISUALIZATION (Images & YouTube)
+        // RESPONSE PARSING & VISUALIZATION
         // ==========================================
         function handleKenResponse(replyText) {
             if (!replyText) return;
             
-            // Look for either [VISUAL: ...] or [VIDEO: ...]
             const visualMatch = replyText.match(/\[VISUAL:\s*(.*?)\]/i);
             const videoMatch = replyText.match(/\[VIDEO:\s*(.*?)\]/i);
             
             let spokenText = replyText;
 
             if (videoMatch && videoMatch[1]) {
-                // Handle Video Request
                 const searchKeyword = videoMatch[1];
-                playYouTubeVideo(searchKeyword + " science educational");
+                playYouTubeVideo(searchKeyword + " science educational animation");
                 spokenText = replyText.replace(videoMatch[0], '').trim(); 
                 
             } else if (visualMatch && visualMatch[1]) {
-                // Handle Image Request
                 const searchKeyword = visualMatch[1];
-                updateVisualBoard(searchKeyword + " science");
+                updateVisualBoard(searchKeyword + " science diagram");
                 spokenText = replyText.replace(visualMatch[0], '').trim(); 
             }
 
-            // Remove any leftover tags just in case AI messes up format
             spokenText = spokenText.replace(/\[.*?\]/g, '');
+            
+            // Save AI's clean response to memory
+            conversationHistory.push({ role: "assistant", content: spokenText });
+
             speakOutLoud(spokenText);
         }
 
         function updateVisualBoard(keyword) {
-            // Hide Video, Show Image
             videoContainer.style.display = 'none';
             videoContainer.innerHTML = ''; 
             
@@ -316,25 +321,20 @@
 
         async function playYouTubeVideo(query) {
             if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE") {
-                console.error("Missing YouTube API Key. Cannot load video.");
+                console.error("Missing YouTube API Key.");
                 return;
             }
 
             try {
-                // Search YouTube API for the top result
                 const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`;
                 const response = await fetch(searchUrl);
                 const data = await response.json();
 
                 if (data.items && data.items.length > 0) {
                     const videoId = data.items[0].id.videoId;
-                    
-                    // Clear background image, show video container
                     visualBoard.style.backgroundImage = 'none';
                     videoContainer.style.display = 'block';
                     
-                    // Embed video (autoplay, muted, no controls for a cinematic background feel)
-                    // Note: Browsers require autoplaying videos to be muted. Ken's voice will play over it.
                     videoContainer.innerHTML = `
                         <iframe 
                             src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&loop=1&playlist=${videoId}" 
