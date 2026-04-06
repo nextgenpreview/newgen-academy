@@ -57,7 +57,7 @@
             </div>
         </header>
 
-        <div id="status-text" class="text-center text-white font-bold tracking-widest text-xl drop-shadow-md mt-4">HOLD TO TALK</div> 
+        <div id="status-text" class="text-center text-white font-bold tracking-widest text-xl drop-shadow-md mt-4">HOLD SPACEBAR OR BUTTON TO TALK</div> 
         <div id="live-transcript" class="text-center text-gray-300 italic mt-2 drop-shadow-md"></div>
 
         <div class="flex justify-end pb-4 pr-4">
@@ -69,7 +69,7 @@
 
     <script>
         // --- ✅ CLOUDFLARE WORKER URL ✅ ---
-        const CLOUDFLARE_WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev";
+        const CLOUDFLARE_WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/";
         
         let scene, camera, renderer, currentObject;
         const canvasContainer = document.getElementById('canvas-container');
@@ -97,32 +97,29 @@
         }
 
         function renderVisuals(aiData) {
-            console.log("AI Requested Visualization:", aiData); // FOR DEBUGGING
-
             canvasContainer.style.display = 'none'; 
             imageContainer.style.display = 'none'; 
             youtubeContainer.style.display = 'none';
+            youtubeIframe.src = ""; // Clear old videos
             
-            // SMART FIX: Force to lowercase so it never breaks
             let vType = (aiData.visual_type || "").toLowerCase();
 
-            if (vType.includes('youtube') || vType.includes('video')) {
+            if ((vType.includes('youtube') || vType.includes('video')) && aiData.youtube_id) {
                 youtubeContainer.style.display = 'flex';
-                youtubeIframe.src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(aiData.visual_prompt)}`;
+                // Official YouTube embed with Auto-Play and Mute enabled
+                youtubeIframe.src = `https://www.youtube.com/embed/${aiData.youtube_id}?autoplay=1&mute=1`;
             } 
             else if (vType.includes('image') || vType.includes('picture')) {
                 imageContainer.style.display = 'flex';
-                dynamicImage.style.opacity = 0; // Reset for loading animation
+                dynamicImage.style.opacity = 0; 
                 dynamicImage.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(aiData.visual_prompt)}?width=1280&height=720&nologo=true`;
             } 
             else {
-                // Default to 3D shape
                 canvasContainer.style.display = 'block';
                 if (currentObject) scene.remove(currentObject);
                 
                 let geometry = new THREE.SphereGeometry(1.5, 32, 32);
                 let prompt = (aiData.visual_prompt || "").toLowerCase();
-                
                 if (prompt.includes('cube')) geometry = new THREE.BoxGeometry(2, 2, 2);
                 if (prompt.includes('torus')) geometry = new THREE.TorusGeometry(1.5, 0.4, 16, 100);
                 
@@ -143,17 +140,18 @@
         let isRecording = false;
         let fullTranscript = "";
 
-        function setUIState(state) {
+        function setUIState(state, errorMsg = "") {
             micBtn.className = 'interactive w-24 h-24 rounded-full flex items-center justify-center';
             if (state === 'idle') { micBtn.classList.add('state-idle'); statusText.innerText = "HOLD SPACEBAR OR BUTTON TO TALK"; }
             if (state === 'recording') { micBtn.classList.add('state-recording'); statusText.innerText = "LISTENING... (Release to send)"; }
             if (state === 'processing') { micBtn.classList.add('state-processing'); statusText.innerText = "KEN IS THINKING..."; }
             if (state === 'speaking') { micBtn.classList.add('state-speaking'); statusText.innerText = "KEN IS SPEAKING..."; }
+            if (state === 'error') { micBtn.classList.add('state-idle'); statusText.innerText = errorMsg; }
         }
 
         function startWalkieTalkie() {
             if (isRecording || synth.speaking) {
-                synth.cancel(); // Interrupt Ken if he is talking!
+                synth.cancel(); // Interrupt Ken!
             }
             isRecording = true;
             fullTranscript = "";
@@ -182,7 +180,10 @@
                     body: JSON.stringify({ text: fullTranscript, language: langName })
                 });
 
-                if (!response.ok) throw new Error("Server Error");
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || "Server Error");
+                }
 
                 const data = await response.json();
                 let start = data.result.indexOf('{');
@@ -190,7 +191,6 @@
                 let cleanJsonString = data.result.substring(start, end + 1).replace(/[\u0000-\u001F]+/g, " ");
                 const aiData = JSON.parse(cleanJsonString);
                 
-                // CALL THE SMART VISUALIZER
                 renderVisuals(aiData);
                 
                 const utterance = new SpeechSynthesisUtterance(aiData.spoken_response);
@@ -204,8 +204,8 @@
 
             } catch (error) {
                 console.error(error);
-                statusText.innerText = "Error Connecting to Ken.";
-                setTimeout(() => setUIState('idle'), 3000);
+                setUIState('error', "Error: " + error.message);
+                setTimeout(() => setUIState('idle'), 4000);
             }
         }
 
