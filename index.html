@@ -167,24 +167,38 @@
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
             recognition.continuous = true;
-            recognition.interimResults = false;
-            recognition.lang = languageSelector.value; // Set initial language
+            
+            // CHANGED: Enable interim results to detect interruptions instantly
+            recognition.interimResults = true; 
+            
+            recognition.lang = languageSelector.value;
 
-            // Update listening language when dropdown changes
             languageSelector.addEventListener('change', () => {
                 recognition.lang = languageSelector.value;
                 if (isSessionLive) {
-                    recognition.stop(); // Will auto-restart with new language via onend
+                    recognition.stop(); 
                 }
             });
 
             recognition.onresult = async (event) => {
-                const latestResult = event.results[event.results.length - 1];
-                if (latestResult.isFinal) {
-                    const userSpeech = latestResult[0].transcript.trim();
-                    if (userSpeech) {
-                        await askKen(userSpeech);
+                // INTERRUPT LOGIC: As soon as the mic picks up sound, stop Ken from speaking
+                if (window.speechSynthesis.speaking) {
+                    window.speechSynthesis.cancel();
+                }
+
+                let finalTranscript = '';
+                
+                // Loop through results to separate interim (interruption noise) from final sentences
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
                     }
+                }
+
+                // Only send the fully completed sentence to the AI
+                const userSpeech = finalTranscript.trim();
+                if (userSpeech) {
+                    await askKen(userSpeech);
                 }
             };
 
@@ -208,7 +222,6 @@
                 micBtn.classList.add('active');
                 recognition.start();
                 
-                // Greet in the selected language
                 const langName = languageSelector.options[languageSelector.selectedIndex].text;
                 let greeting = "Session started. Hi, I am Ken. What science topic shall we explore?";
                 if (langName === "Bengali") greeting = "সেশন শুরু হয়েছে। নমস্কার, আমি কেন। আজ আমরা বিজ্ঞানের কোন বিষয় নিয়ে আলোচনা করব?";
@@ -228,7 +241,6 @@
         // ==========================================
         async function askKen(message) {
             const gradeLevel = gradeSelector.value;
-            // Get the human-readable language name (English, Bengali, Hindi)
             const selectedLanguage = languageSelector.options[languageSelector.selectedIndex].text;
 
             try {
@@ -237,7 +249,7 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         grade: gradeLevel,
-                        language: selectedLanguage, // Send language to Llama 3
+                        language: selectedLanguage,
                         message: message
                     })
                 });
@@ -267,7 +279,6 @@
 
             if (visualMatch && visualMatch[1]) {
                 const searchKeyword = visualMatch[1];
-                // Always search images in English for better Unsplash results
                 updateVisualBoard(searchKeyword + " science");
                 spokenText = replyText.replace(visualMatch[0], '').trim(); 
             }
@@ -286,16 +297,16 @@
         // ==========================================
         function speakOutLoud(text) {
             if (!isSessionLive || !text) return;
+            
+            // Double check cancellation before starting new speech
             window.speechSynthesis.cancel(); 
 
             const utterance = new SpeechSynthesisUtterance(text);
             const voices = window.speechSynthesis.getVoices();
-            const currentLangCode = languageSelector.value; // 'en-IN', 'bn-IN', or 'hi-IN'
+            const currentLangCode = languageSelector.value; 
             
-            // 1. Try to find an exact language match
             let kenVoice = voices.find(v => v.lang === currentLangCode || v.lang.replace('_', '-') === currentLangCode);
             
-            // 2. Fallback to just matching the base language (e.g., 'bn' or 'hi')
             if (!kenVoice) {
                 const baseLang = currentLangCode.split('-')[0];
                 kenVoice = voices.find(v => v.lang.startsWith(baseLang));
