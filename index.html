@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: linear-gradient(135deg, #004d40, #fff9c4); font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: linear-gradient(135deg, #004d40, #fff9c4); font-family: sans-serif; user-select: none; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         #image-container, #youtube-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 2; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); }
         #dynamic-image { max-width: 80%; max-height: 80%; border-radius: 20px; box-shadow: 0 0 50px rgba(0, 191, 165, 0.5); object-fit: contain; }
@@ -17,12 +17,13 @@
         .floating-icon { position: absolute; color: rgba(142, 36, 170, 0.3); font-size: 2rem; animation: float 6s infinite ease-in-out; z-index: 0; }
         @keyframes float { 0% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-20px) rotate(10deg); } 100% { transform: translateY(0) rotate(0deg); } }
         
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-        .state-listening { background-color: #ef4444; animation: pulse-red 2s infinite; }
-        .state-thinking { background-color: #eab308; box-shadow: 0 0 20px rgba(234, 179, 8, 0.6); }
-        .state-speaking { background-color: #3b82f6; box-shadow: 0 0 20px rgba(59, 130, 246, 0.6); }
-        .state-error { background-color: #991b1b; }
-        .state-off { background-color: #22c55e; }
+        /* Walkie-Talkie Button States */
+        #mic-btn { cursor: pointer; transition: all 0.1s ease-in-out; }
+        #mic-btn:active { transform: scale(0.9); } /* Shrinks slightly when pressed */
+        .state-idle { background-color: #22c55e; } /* Green - Ready */
+        .state-recording { background-color: #ef4444; box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); } /* Red - Holding */
+        .state-processing { background-color: #eab308; opacity: 0.7; pointer-events: none; } /* Yellow - Fetching */
+        .state-speaking { background-color: #3b82f6; box-shadow: 0 0 30px rgba(59, 130, 246, 0.8); pointer-events: none; } /* Blue - Ken Talking */
     </style>
 </head>
 <body>
@@ -48,12 +49,12 @@
             </div>
         </header>
 
-        <div id="status-text" class="text-center text-white font-bold tracking-widest text-xl drop-shadow-md mt-4"></div> 
+        <div id="status-text" class="text-center text-white font-bold tracking-widest text-xl drop-shadow-md mt-4">HOLD SPACEBAR OR BUTTON TO TALK</div> 
         <div id="live-transcript" class="text-center text-gray-300 italic mt-2 drop-shadow-md"></div>
 
         <div class="flex justify-end pb-4 pr-4">
-            <button id="mic-btn" class="interactive state-off w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300">
-                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+            <button id="mic-btn" class="interactive state-idle w-24 h-24 rounded-full flex items-center justify-center">
+                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
             </button>
         </div>
     </div>
@@ -62,12 +63,14 @@
         // --- ✅ CLOUDFLARE WORKER URL ✅ ---
         const CLOUDFLARE_WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev";
         
+        // --- Setup Visuals ---
         let scene, camera, renderer, currentObject;
         const canvasContainer = document.getElementById('canvas-container');
         const imageContainer = document.getElementById('image-container');
         const youtubeContainer = document.getElementById('youtube-container');
         const dynamicImage = document.getElementById('dynamic-image');
         const youtubeIframe = document.getElementById('youtube-iframe');
+        const statusText = document.getElementById('status-text');
         const liveTranscriptUI = document.getElementById('live-transcript');
         
         function init3D() {
@@ -76,13 +79,8 @@
             renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             canvasContainer.appendChild(renderer.domElement);
-            
-            const light = new THREE.DirectionalLight(0xffffff, 1);
-            light.position.set(5, 5, 5);
-            scene.add(light);
-            scene.add(new THREE.AmbientLight(0x404040));
-            camera.position.z = 5;
-            animate3D();
+            const light = new THREE.DirectionalLight(0xffffff, 1); light.position.set(5, 5, 5); scene.add(light); scene.add(new THREE.AmbientLight(0x404040));
+            camera.position.z = 5; animate3D();
         }
 
         function animate3D() {
@@ -92,20 +90,14 @@
         }
 
         function renderVisuals(aiData) {
-            canvasContainer.style.display = 'none';
-            imageContainer.style.display = 'none';
-            youtubeContainer.style.display = 'none';
-
+            canvasContainer.style.display = 'none'; imageContainer.style.display = 'none'; youtubeContainer.style.display = 'none';
             if (aiData.visual_type === 'youtube') {
                 youtubeContainer.style.display = 'flex';
-                // Genius hack to instantly embed a YouTube search result
                 youtubeIframe.src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(aiData.visual_prompt)}`;
-            } 
-            else if (aiData.visual_type === 'image') {
+            } else if (aiData.visual_type === 'image') {
                 imageContainer.style.display = 'flex';
                 dynamicImage.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(aiData.visual_prompt)}?width=1280&height=720&nologo=true`;
-            } 
-            else {
+            } else {
                 canvasContainer.style.display = 'block';
                 if (currentObject) scene.remove(currentObject);
                 let geometry = new THREE.SphereGeometry(1.5, 32, 32);
@@ -116,133 +108,108 @@
             }
         }
 
-        let sessionActive = false; 
-        let kenIsBusy = false; 
-        window.speechUtterances = []; 
-        
-        let fullTranscriptAccumulator = ""; // Stores your consecutive sentences
-        let thoughtBufferTimer = null; // The timer that waits for you to finish breathing
-        
+        // --- WALKIE-TALKIE LOGIC ---
         const micBtn = document.getElementById('mic-btn');
-        const statusText = document.getElementById('status-text');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const synth = window.speechSynthesis;
         let recognition = new SpeechRecognition();
         
-        recognition.continuous = true; // Stay on forever
-        recognition.interimResults = true; // Catch words as they are spoken
+        recognition.continuous = true; 
+        recognition.interimResults = true; 
 
-        function setUIState(state, customText = null) {
-            micBtn.className = 'interactive w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300';
-            if (state === 'off') { micBtn.classList.add('state-off'); statusText.innerText = ""; liveTranscriptUI.innerText = ""; }
-            if (state === 'listening') { micBtn.classList.add('state-listening'); statusText.innerText = "Listening..."; }
-            if (state === 'thinking') { micBtn.classList.add('state-thinking'); statusText.innerText = "Ken is analyzing..."; liveTranscriptUI.innerText = ""; }
-            if (state === 'speaking') { micBtn.classList.add('state-speaking'); statusText.innerText = "Ken is speaking..."; }
-            if (state === 'error') { micBtn.classList.add('state-error'); statusText.innerText = customText || "Error Occurred"; }
+        let isRecording = false;
+        let fullTranscript = "";
+
+        function setUIState(state) {
+            micBtn.className = 'interactive w-24 h-24 rounded-full flex items-center justify-center';
+            if (state === 'idle') { micBtn.classList.add('state-idle'); statusText.innerText = "HOLD TO TALK"; }
+            if (state === 'recording') { micBtn.classList.add('state-recording'); statusText.innerText = "LISTENING... (Release to send)"; }
+            if (state === 'processing') { micBtn.classList.add('state-processing'); statusText.innerText = "KEN IS THINKING..."; }
+            if (state === 'speaking') { micBtn.classList.add('state-speaking'); statusText.innerText = "KEN IS SPEAKING..."; }
         }
 
-        function keepListening() {
-            if (sessionActive && !kenIsBusy) {
-                recognition.lang = document.getElementById('lang-select').value;
-                try { recognition.start(); setUIState('listening'); } catch(e) { } 
+        // 1. PRESS DOWN (Start Listening)
+        function startWalkieTalkie() {
+            if (isRecording || synth.speaking) return; 
+            isRecording = true;
+            fullTranscript = "";
+            liveTranscriptUI.innerText = "";
+            setUIState('recording');
+            recognition.lang = document.getElementById('lang-select').value;
+            try { recognition.start(); } catch(e) {}
+        }
+
+        // 2. RELEASE (Stop and Send to AI)
+        async function stopWalkieTalkie() {
+            if (!isRecording) return;
+            isRecording = false;
+            recognition.stop();
+            
+            if (fullTranscript.trim().length === 0) {
+                setUIState('idle'); // User didn't say anything
+                return;
+            }
+
+            setUIState('processing');
+
+            try {
+                const langName = document.getElementById('lang-select').options[document.getElementById('lang-select').selectedIndex].text;
+                const response = await fetch(CLOUDFLARE_WORKER_URL, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: fullTranscript, language: langName })
+                });
+
+                if (!response.ok) throw new Error("Server Error");
+
+                const data = await response.json();
+                let start = data.result.indexOf('{');
+                let end = data.result.lastIndexOf('}');
+                let cleanJsonString = data.result.substring(start, end + 1).replace(/[\u0000-\u001F]+/g, " ");
+                const aiData = JSON.parse(cleanJsonString);
+                
+                renderVisuals(aiData);
+                
+                const utterance = new SpeechSynthesisUtterance(aiData.spoken_response);
+                utterance.lang = document.getElementById('lang-select').value;
+                
+                utterance.onstart = () => setUIState('speaking');
+                utterance.onend = () => setUIState('idle'); // Back to Green when done
+                utterance.onerror = () => setUIState('idle');
+
+                synth.speak(utterance);
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "Error Connecting to Ken.";
+                setTimeout(() => setUIState('idle'), 3000);
             }
         }
 
-        micBtn.addEventListener('click', () => {
-            if (!sessionActive) {
-                sessionActive = true;
-                kenIsBusy = false;
-                fullTranscriptAccumulator = "";
-                keepListening();
-            } else {
-                sessionActive = false;
-                kenIsBusy = false;
-                setUIState('off');
-                recognition.stop();
-                synth.cancel(); 
-                renderVisuals({visual_type: '3d'}); // Reset visuals
-            }
-        });
-
-        // The Engine: Deep Listening & Interruption
+        // Build the transcript as the user holds the button
         recognition.onresult = (event) => {
-            if (!sessionActive || kenIsBusy) return;
-
-            let interim = '';
-            let justFinalized = '';
-
+            let currentText = '';
             for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    justFinalized += event.results[i][0].transcript + " ";
-                } else {
-                    interim += event.results[i][0].transcript;
-                }
+                currentText += event.results[i][0].transcript;
             }
-
-            // TRUE INTERRUPTION: If you make a sound while Ken is talking, shut him up instantly
-            if ((justFinalized || interim).trim().length > 0 && synth.speaking) {
-                synth.cancel();
-            }
-
-            fullTranscriptAccumulator += justFinalized;
-            liveTranscriptUI.innerText = fullTranscriptAccumulator + interim; // Show you what it hears
-
-            // THE THOUGHT BUFFER
-            clearTimeout(thoughtBufferTimer); // Stop the clock! The user is still talking.
-
-            if (fullTranscriptAccumulator.trim().length > 0) {
-                // The user paused. Start a 1.5-second countdown.
-                thoughtBufferTimer = setTimeout(async () => {
-                    // Time's up! Send the complete consecutive sentences to Groq.
-                    kenIsBusy = true;
-                    setUIState('thinking');
-                    
-                    const textToSend = fullTranscriptAccumulator;
-                    fullTranscriptAccumulator = ""; // Clear memory for the next conversation
-
-                    try {
-                        const langName = document.getElementById('lang-select').options[document.getElementById('lang-select').selectedIndex].text;
-                        const response = await fetch(CLOUDFLARE_WORKER_URL, {
-                            method: "POST", headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ text: textToSend, language: langName })
-                        });
-                        
-                        if (!response.ok) throw new Error("Server Error");
-
-                        const data = await response.json();
-                        let rawResult = data.result;
-                        let start = rawResult.indexOf('{');
-                        let end = rawResult.lastIndexOf('}');
-                        let cleanJsonString = rawResult.substring(start, end + 1).replace(/[\u0000-\u001F]+/g, " ");
-                        const aiData = JSON.parse(cleanJsonString);
-                        
-                        renderVisuals(aiData);
-                        
-                        const utterance = new SpeechSynthesisUtterance(aiData.spoken_response);
-                        utterance.lang = document.getElementById('lang-select').value;
-                        window.speechUtterances.push(utterance); 
-                        
-                        utterance.onstart = () => { if (sessionActive) setUIState('speaking'); };
-                        utterance.onend = () => { if (sessionActive) { kenIsBusy = false; keepListening(); } };
-                        utterance.onerror = () => { if (sessionActive) { kenIsBusy = false; keepListening(); } };
-
-                        synth.speak(utterance);
-
-                    } catch (error) {
-                        setUIState('error', "Connection issue");
-                        setTimeout(() => { if (sessionActive) { kenIsBusy = false; keepListening(); } }, 3000);
-                    }
-                }, 1500); // Wait 1.5 seconds of silence before firing
-            }
+            fullTranscript = currentText;
+            liveTranscriptUI.innerText = fullTranscript;
         };
 
-        recognition.onend = () => { if (sessionActive && !kenIsBusy) setTimeout(keepListening, 100); };
+        // Mouse Controls
+        micBtn.addEventListener('mousedown', startWalkieTalkie);
+        window.addEventListener('mouseup', stopWalkieTalkie);
+
+        // Touch Controls (for Phones/Tablets)
+        micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startWalkieTalkie(); });
+        window.addEventListener('touchend', stopWalkieTalkie);
+
+        // Spacebar Control (for Laptops)
+        window.addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat) startWalkieTalkie(); });
+        window.addEventListener('keyup', (e) => { if (e.code === 'Space') stopWalkieTalkie(); });
 
         window.onload = init3D;
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
 </body>
