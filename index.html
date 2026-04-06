@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewGen Academy</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #111;
+            color: white;
+            overflow: hidden;
+        }
+
+        /* The Big Visual Board */
+        #visual-board {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            background-size: cover;
+            background-position: center;
+            background-image: url('https://images.unsplash.com/photo-1507413245164-6160d8298b31?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80'); /* Default Science BG */
+            transition: background-image 1s ease-in-out;
+            z-index: 1;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none; /* Let clicks pass through to board if needed */
+        }
+
+        .header {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            pointer-events: auto;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        select {
+            padding: 10px 15px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            border: 2px solid white;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            cursor: pointer;
+            outline: none;
+        }
+
+        select option {
+            background: #222;
+        }
+
+        .controls {
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            pointer-events: auto;
+        }
+
+        /* Microphone Button */
+        #mic-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: none;
+            background-color: #4CAF50; /* Green by default */
+            color: white;
+            font-size: 2rem;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #mic-btn.active {
+            background-color: #f44336; /* Red when live */
+            box-shadow: 0 0 20px #f44336;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="visual-board"></div>
+
+    <div id="ui-layer">
+        <div class="header">
+            <h1>NewGen Academy</h1>
+            <select id="grade-selector">
+                <option value="Grades 1-5">Grades 1-5</option>
+                <option value="Grades 6-9">Grades 6-9</option>
+                <option value="Grades 10-12">Grades 10-12</option>
+                <option value="Honors">Honors</option>
+                <option value="Masters">Masters</option>
+                <option value="Ph.D">Ph.D</option>
+            </select>
+        </div>
+
+        <div class="controls">
+            <button id="mic-btn">🎤</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/"; // <-- PASTE YOUR URL HERE
+
+        // State Variables
+        let isSessionLive = false;
+        let recognition;
+        
+        // UI Elements
+        const micBtn = document.getElementById('mic-btn');
+        const gradeSelector = document.getElementById('grade-selector');
+        const visualBoard = document.getElementById('visual-board');
+
+        // ==========================================
+        // SPEECH RECOGNITION (Browser Native)
+        // ==========================================
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true; // Keep listening during the session
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = async (event) => {
+                const latestResult = event.results[event.results.length - 1];
+                if (latestResult.isFinal) {
+                    const userSpeech = latestResult[0].transcript.trim();
+                    if (userSpeech) {
+                        await askKen(userSpeech);
+                    }
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error:", event.error);
+                if(event.error === 'no-speech' && isSessionLive) {
+                    // Ignore silent pauses, keep session alive
+                }
+            };
+            
+            recognition.onend = () => {
+                // If it disconnects but session should be live, restart it automatically
+                if (isSessionLive) recognition.start();
+            };
+        } else {
+            alert("Your browser does not support real-time voice. Please use Google Chrome.");
+        }
+
+        // ==========================================
+        // UI INTERACTIONS
+        // ==========================================
+        micBtn.addEventListener('click', () => {
+            if (!isSessionLive) {
+                // Start Session
+                isSessionLive = true;
+                micBtn.classList.add('active');
+                recognition.start();
+                speakOutLoud("Session started. Hi, I am Ken. What science topic shall we explore?");
+            } else {
+                // End Session
+                isSessionLive = false;
+                micBtn.classList.remove('active');
+                recognition.stop();
+                window.speechSynthesis.cancel(); // Stop Ken from talking
+            }
+        });
+
+        // ==========================================
+        // API COMMUNICATION WITH WORKER
+        // ==========================================
+        async function askKen(message) {
+            if (!WORKER_URL || WORKER_URL === "https://newgen-brain.newpreviewgen.workers.dev/") {
+                console.error("Please set your Cloudflare Worker URL in the code.");
+                return;
+            }
+
+            const gradeLevel = gradeSelector.value;
+
+            try {
+                const response = await fetch(WORKER_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        grade: gradeLevel,
+                        message: message
+                    })
+                });
+
+                const data = await response.json();
+                handleKenResponse(data.reply);
+
+            } catch (error) {
+                console.error("Error contacting Ken:", error);
+            }
+        }
+
+        // ==========================================
+        // RESPONSE PARSING & VISUALIZATION
+        // ==========================================
+        function handleKenResponse(replyText) {
+            // Check if Llama 3 included a visual tag, e.g., [VISUAL: solar system]
+            const visualMatch = replyText.match(/\[VISUAL:\s*(.*?)\]/i);
+            let spokenText = replyText;
+
+            if (visualMatch && visualMatch[1]) {
+                const searchKeyword = visualMatch[1];
+                updateVisualBoard(searchKeyword);
+                // Remove the tag so Ken doesn't read it out loud
+                spokenText = replyText.replace(visualMatch[0], '').trim(); 
+            }
+
+            speakOutLoud(spokenText);
+        }
+
+        function updateVisualBoard(keyword) {
+            // Using Unsplash Source API as a simple placeholder for real-time visuals
+            // In production, you could hook this up to a 3D library or video API
+            const formattedKeyword = encodeURIComponent(keyword + " science");
+            const newImageUrl = `https://source.unsplash.com/1920x1080/?${formattedKeyword}`;
+            visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
+        }
+
+        // ==========================================
+        // TEXT TO SPEECH (Ken's Voice)
+        // ==========================================
+        function speakOutLoud(text) {
+            if (!isSessionLive) return;
+            
+            // Cancel current speech if user triggers new response
+            window.speechSynthesis.cancel(); 
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // Try to find a good male voice for Ken
+            const voices = window.speechSynthesis.getVoices();
+            const kenVoice = voices.find(v => v.name.includes('Google UK English Male') || v.name.includes('Male')) || voices[0];
+            if (kenVoice) utterance.voice = kenVoice;
+            
+            utterance.rate = 1.0;
+            utterance.pitch = 0.9; // Slightly deeper for a teacher
+            
+            window.speechSynthesis.speak(utterance);
+        }
+    </script>
+</body>
+</html>
