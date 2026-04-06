@@ -7,55 +7,42 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
         
-        #visual-board { position: absolute; width: 100%; height: 100%; background-color: #111; background-size: cover; background-position: center; z-index: 1; transition: background-image 0.5s ease-in-out; }
+        #visual-board { position: absolute; width: 100%; height: 100%; background-color: #111; background-size: cover; background-position: center; z-index: 1; transition: background-image 1s ease-in-out; }
         
         #video-layer { position: absolute; width: 100%; height: 100%; z-index: 2; display: none; background: #000; }
-        #video-layer iframe { width: 100%; height: 100%; border: none; pointer-events: none; }
+        #video-layer iframe { width: 100%; height: 100%; border: none; pointer-events: auto; }
         
         #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 15%, transparent 85%, rgba(0,0,0,0.8) 100%); }
         
         .top-bar { padding: 20px; display: flex; justify-content: space-between; align-items: center; pointer-events: auto; }
         h1 { margin: 0; font-size: 2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
         
-        .selectors { display: flex; gap: 15px; }
         select { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; padding: 10px 15px; border-radius: 8px; font-size: 1.1rem; cursor: pointer; outline: none; }
-        select option { background: #222; }
         
         .bottom-controls { padding: 40px; display: flex; justify-content: center; pointer-events: auto; }
         
         .btn-mic { width: 80px; height: 80px; border-radius: 50%; border: none; background: #4CAF50; color: white; font-size: 2rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; }
         .btn-mic.active { background: #f44336; box-shadow: 0 0 20px #f44336; animation: pulse 1.5s infinite; }
         
-        @keyframes pulse { 
-            0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(244, 67, 54, 0.7); } 
-            70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(244, 67, 54, 0); } 
-            100% { transform: scale(1); } 
-        }
+        @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(244, 67, 54, 0.7); } 70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(244, 67, 54, 0); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
 
-    <div id="visual-board" style="background-image: url('https://images.unsplash.com/photo-1507413245164-6160d8298b31?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');"></div>
+    <div id="visual-board" style="background-image: url('https://image.pollinations.ai/prompt/beautiful%20universe%20science?width=1920&height=1080&nologo=true');"></div>
     <div id="video-layer"></div>
     
     <div id="ui">
         <div class="top-bar">
             <h1>NewGen Academy</h1>
-            <div class="selectors">
-                <select id="language-selector">
-                    <option value="en-IN">English</option>
-                    <option value="bn-IN">Bengali</option>
-                    <option value="hi-IN">Hindi</option>
-                </select>
-                <select id="grade-selector">
-                    <option value="Grades 1-5">Grades 1-5</option>
-                    <option value="Grades 6-9">Grades 6-9</option>
-                    <option value="Grades 10-12">Grades 10-12</option>
-                    <option value="Honors">Honors</option>
-                    <option value="Masters">Masters</option>
-                    <option value="Ph.D">Ph.D</option>
-                </select>
-            </div>
+            <select id="grade-selector">
+                <option value="Grades 1-5">Grades 1-5</option>
+                <option value="Grades 6-9">Grades 6-9</option>
+                <option value="Grades 10-12">Grades 10-12</option>
+                <option value="Honors">Honors</option>
+                <option value="Masters">Masters</option>
+                <option value="Ph.D">Ph.D</option>
+            </select>
         </div>
         <div class="bottom-controls">
             <button id="mic" class="btn-mic">🎤</button>
@@ -69,15 +56,14 @@
         const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/";
         const YOUTUBE_API_KEY = "PASTE_YOUR_YOUTUBE_API_KEY_HERE"; 
 
-        // State Variables
         let isSessionLive = false;
         let recognition;
         let conversationHistory = []; 
+        let speechQueue = [];
+        let isSpeaking = false;
         
-        // UI Elements
         const micBtn = document.getElementById('mic');
         const gradeSelector = document.getElementById('grade-selector');
-        const languageSelector = document.getElementById('language-selector');
         const visualBoard = document.getElementById('visual-board');
         const videoLayer = document.getElementById('video-layer');
 
@@ -89,18 +75,15 @@
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true; 
-            recognition.lang = languageSelector.value;
-
-            // Update language dynamically
-            languageSelector.addEventListener('change', () => {
-                recognition.lang = languageSelector.value;
-                if (isSessionLive) recognition.stop(); 
-            });
+            
+            // Set to Indian English default to allow a mix of English, Hindi, and Bengali accent detection
+            recognition.lang = 'en-IN'; 
 
             recognition.onresult = async (event) => {
-                // INSTANT INTERRUPTION: Stop Ken from talking the second the user makes a sound
                 if (window.speechSynthesis.speaking) {
                     window.speechSynthesis.cancel();
+                    speechQueue = []; // Clear queue on interruption
+                    isSpeaking = false;
                 }
 
                 let finalTranscript = '';
@@ -116,12 +99,7 @@
                 }
             };
             
-            recognition.onend = () => {
-                // Keep the microphone alive during the session
-                if (isSessionLive) recognition.start();
-            };
-        } else {
-            alert("Your browser does not support real-time voice. Please use Google Chrome.");
+            recognition.onend = () => { if (isSessionLive) recognition.start(); };
         }
 
         // ==========================================
@@ -129,26 +107,19 @@
         // ==========================================
         micBtn.addEventListener('click', () => {
             if (!isSessionLive) {
-                // Start
                 isSessionLive = true;
                 conversationHistory = []; 
                 micBtn.classList.add('active');
                 recognition.start();
-                
-                const langName = languageSelector.options[languageSelector.selectedIndex].text;
-                let greeting = "Session started. Hi, I am Ken. What science topic shall we explore?";
-                if (langName === "Bengali") greeting = "সেশন শুরু হয়েছে। নমস্কার, আমি কেন। আজ আমরা বিজ্ঞানের কোন বিষয় নিয়ে আলোচনা করব?";
-                if (langName === "Hindi") greeting = "सत्र शुरू हो गया है। नमस्ते, मैं केन हूँ। आज हम विज्ञान के किस विषय पर चर्चा करेंगे?";
-                
-                queueSpeech(greeting);
+                queueSpeech("Hi, I am Ken. Feel free to speak to me in English, Hindi, or Bengali. What science topic shall we explore?");
             } else {
-                // Stop
                 isSessionLive = false;
                 micBtn.classList.remove('active');
                 recognition.stop();
                 window.speechSynthesis.cancel();
+                speechQueue = [];
+                isSpeaking = false;
                 videoLayer.style.display = 'none';
-                videoLayer.innerHTML = '';
             }
         });
 
@@ -157,11 +128,8 @@
         // ==========================================
         async function askKen(message) {
             const gradeLevel = gradeSelector.value;
-            const selectedLanguage = languageSelector.options[languageSelector.selectedIndex].text;
-
             conversationHistory.push({ role: "user", content: message });
-            // Keep memory at last 10 messages to prevent overload
-            if (conversationHistory.length > 10) conversationHistory = conversationHistory.slice(-10);
+            if (conversationHistory.length > 8) conversationHistory = conversationHistory.slice(-8);
 
             try {
                 const response = await fetch(WORKER_URL, {
@@ -169,7 +137,6 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         grade: gradeLevel,
-                        language: selectedLanguage,
                         messages: conversationHistory
                     })
                 });
@@ -178,7 +145,6 @@
                 const decoder = new TextDecoder("utf-8");
                 let sentenceBuffer = "";
                 let fullReplyTracker = "";
-                let visualTriggered = false;
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -196,21 +162,23 @@
                                 sentenceBuffer += word;
                                 fullReplyTracker += word;
 
-                                // 1. Check for Visual Tags instantly
-                                if (!visualTriggered && sentenceBuffer.includes(']')) {
+                                // 1. Instant Visual Trigger Check
+                                if (sentenceBuffer.includes(']')) {
                                     const videoMatch = fullReplyTracker.match(/\[VIDEO:\s*(.*?)\]/i);
                                     const visualMatch = fullReplyTracker.match(/\[VISUAL:\s*(.*?)\]/i);
                                     
                                     if (videoMatch) {
                                         playYouTubeVideo(videoMatch[1] + " science educational animation");
-                                        visualTriggered = true;
+                                        fullReplyTracker = fullReplyTracker.replace(videoMatch[0], ''); // Clear tag so it doesn't trigger twice
+                                        sentenceBuffer = sentenceBuffer.replace(videoMatch[0], '');
                                     } else if (visualMatch) {
                                         updateVisualBoard(visualMatch[1] + " science diagram");
-                                        visualTriggered = true;
+                                        fullReplyTracker = fullReplyTracker.replace(visualMatch[0], '');
+                                        sentenceBuffer = sentenceBuffer.replace(visualMatch[0], '');
                                     }
                                 }
 
-                                // 2. Speak sentences as soon as they end
+                                // 2. Fluent Sentence Chunking (Splits on English, Hindi, and Bengali punctuation)
                                 if (/[.?!।]\s/.test(sentenceBuffer) || sentenceBuffer.endsWith('\n')) {
                                     let textToSpeak = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
                                     if (textToSpeak) queueSpeech(textToSpeak);
@@ -221,11 +189,10 @@
                     }
                 }
 
-                // Speak any leftover words
+                // Leftover words
                 let finalSentence = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
                 if (finalSentence) queueSpeech(finalSentence);
 
-                // Save full clean response to memory
                 conversationHistory.push({ role: "assistant", content: fullReplyTracker.replace(/\[.*?\]/g, '').trim() });
 
             } catch (error) {
@@ -234,22 +201,21 @@
         }
 
         // ==========================================
-        // VISUALIZATION LOGIC
+        // GUARANTEED VISUALIZATION LOGIC
         // ==========================================
         function updateVisualBoard(keyword) {
             videoLayer.style.display = 'none';
             videoLayer.innerHTML = ''; 
             
-            const formattedKeyword = encodeURIComponent(keyword);
-            // Using a reliable placeholder fallback if Unsplash fails
-            const newImageUrl = `https://source.unsplash.com/1920x1080/?${formattedKeyword}`;
+            // USING POLLINATIONS AI - No API key needed, guarantees a generated image!
+            const formattedKeyword = encodeURIComponent(keyword + " highly detailed 3d render educational");
+            const newImageUrl = `https://image.pollinations.ai/prompt/${formattedKeyword}?width=1920&height=1080&nologo=true`;
             visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
         }
 
         async function playYouTubeVideo(query) {
             if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE") {
-                console.warn("No YouTube API Key. Falling back to image.");
-                updateVisualBoard(query);
+                updateVisualBoard(query); // Fallback to image instantly if no key
                 return;
             }
 
@@ -271,44 +237,59 @@
                         </iframe>
                     `;
                 } else {
-                    updateVisualBoard(query); // Fallback if no video found
+                    updateVisualBoard(query); 
                 }
             } catch (error) {
-                console.error("YouTube search failed:", error);
-                updateVisualBoard(query); // Fallback on error
+                updateVisualBoard(query); 
             }
         }
 
         // ==========================================
-        // TEXT TO SPEECH (Speaking)
+        // FLUENT TEXT TO SPEECH (Auto-Language Detection)
         // ==========================================
         function queueSpeech(text) {
             if (!isSessionLive || !text) return;
+            speechQueue.push(text);
+            if (!isSpeaking) playNextInQueue();
+        }
 
-            const utterance = new SpeechSynthesisUtterance(text);
-            const voices = window.speechSynthesis.getVoices();
-            const currentLangCode = languageSelector.value; 
-            
-            // Try strict match
-            let kenVoice = voices.find(v => v.lang === currentLangCode || v.lang.replace('_', '-') === currentLangCode);
-            
-            // Try loose match (e.g. any 'en', 'hi', or 'bn' voice)
-            if (!kenVoice) {
-                const baseLang = currentLangCode.split('-')[0];
-                kenVoice = voices.find(v => v.lang.startsWith(baseLang));
+        function playNextInQueue() {
+            if (speechQueue.length === 0) {
+                isSpeaking = false;
+                return;
             }
             
-            if (kenVoice) utterance.voice = kenVoice;
+            isSpeaking = true;
+            const text = speechQueue.shift();
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voices = window.speechSynthesis.getVoices();
             
-            utterance.rate = 1.0;
+            // DYNAMIC LANGUAGE DETECTION based on characters in the text
+            const hasBengali = /[\u0980-\u09FF]/.test(text);
+            const hasHindi = /[\u0900-\u097F]/.test(text);
+            
+            let targetVoice;
+            
+            if (hasBengali) {
+                targetVoice = voices.find(v => v.lang.includes('bn'));
+            } else if (hasHindi) {
+                targetVoice = voices.find(v => v.lang.includes('hi'));
+            } else {
+                targetVoice = voices.find(v => v.lang === 'en-GB' || v.lang === 'en-IN' || v.lang === 'en-US');
+            }
+            
+            if (targetVoice) utterance.voice = targetVoice;
+            
+            utterance.rate = 1.0; 
             utterance.pitch = 0.9;
+            
+            utterance.onend = () => { playNextInQueue(); };
+            utterance.onerror = () => { playNextInQueue(); };
             
             window.speechSynthesis.speak(utterance);
         }
         
-        window.speechSynthesis.onvoiceschanged = () => {
-            window.speechSynthesis.getVoices();
-        };
+        window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
     </script>
 </body>
 </html>
