@@ -20,10 +20,15 @@
         
         .bottom-controls { padding: 40px; display: flex; justify-content: center; pointer-events: auto; }
         
+        /* Mic button starts green, becomes red when active */
         .btn-mic { width: 80px; height: 80px; border-radius: 50%; border: none; background: #4CAF50; color: white; font-size: 2rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; }
         .btn-mic.active { background: #f44336; box-shadow: 0 0 20px #f44336; animation: pulse 1.5s infinite; }
         
-        @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(244, 67, 54, 0.7); } 70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(244, 67, 54, 0); } 100% { transform: scale(1); } }
+        @keyframes pulse { 
+            0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(244, 67, 54, 0.7); } 
+            70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(244, 67, 54, 0); } 
+            100% { transform: scale(1); } 
+        }
     </style>
 </head>
 <body>
@@ -59,26 +64,33 @@
         let recognition;
         let conversationHistory = []; 
         
+        // Smart Listening Variables
+        let speechBuffer = "";
+        let speechTimeout = null;
+        
         const micBtn = document.getElementById('mic');
         const gradeSelector = document.getElementById('grade-selector');
         const visualBoard = document.getElementById('visual-board');
         const videoLayer = document.getElementById('video-layer');
 
         // ==========================================
-        // SPEECH RECOGNITION (Listening)
+        // SMART SPEECH RECOGNITION (Listening & Waiting)
         // ==========================================
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true; 
-            recognition.lang = 'en-IN'; // Picks up mixed English/Hindi/Bengali accents well
+            recognition.lang = 'en-IN'; // Best for picking up English, Hindi, and Bengali
 
             recognition.onresult = async (event) => {
-                // INSTANT INTERRUPTION
+                // 1. INSTANT INTERRUPTION
                 if (window.speechSynthesis.speaking) {
                     window.speechSynthesis.cancel();
                 }
+
+                // 2. Clear timer as user is still talking
+                clearTimeout(speechTimeout);
 
                 let finalTranscript = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -87,33 +99,52 @@
                     }
                 }
 
-                const userSpeech = finalTranscript.trim();
-                if (userSpeech) {
-                    await askKen(userSpeech);
+                if (finalTranscript.trim()) {
+                    // Accumulate sentences
+                    speechBuffer += " " + finalTranscript.trim();
+                    
+                    // 3. WAIT 2 SECONDS FOR USER TO FINISH
+                    speechTimeout = setTimeout(async () => {
+                        const fullQuestion = speechBuffer.trim();
+                        if (fullQuestion) {
+                            speechBuffer = ""; // Reset for next interaction
+                            
+                            // Immediately force visual update based on question
+                            updateVisualBoard(fullQuestion + " science");
+                            
+                            // Send to AI
+                            await askKen(fullQuestion);
+                        }
+                    }, 2000); 
                 }
             };
             
-            recognition.onend = () => { if (isSessionLive) recognition.start(); };
+            recognition.onend = () => { 
+                // Auto-restart mic if session is live
+                if (isSessionLive) recognition.start(); 
+            };
         } else {
             alert("Please use Google Chrome for voice features.");
         }
 
         // ==========================================
-        // SESSION CONTROL
+        // LIVE SESSION CONTROL
         // ==========================================
         micBtn.addEventListener('click', () => {
             if (!isSessionLive) {
                 isSessionLive = true;
                 conversationHistory = []; 
-                micBtn.classList.add('active');
+                speechBuffer = "";
+                micBtn.classList.add('active'); // Turns red
                 recognition.start();
-                speakOutLoud("Session started. Hi, I am Ken. What science topic shall we explore today?");
+                speakOutLoud("Session started. Hi, I am Ken. Feel free to speak in English, Hindi, or Bengali. What shall we explore?");
             } else {
                 isSessionLive = false;
-                micBtn.classList.remove('active');
+                micBtn.classList.remove('active'); // Turns green
                 recognition.stop();
                 window.speechSynthesis.cancel();
                 videoLayer.style.display = 'none';
+                clearTimeout(speechTimeout);
             }
         });
 
@@ -158,24 +189,17 @@
                                 sentenceBuffer += word;
                                 fullReplyTracker += word;
 
-                                // VISUALIZATION FAILSAFE: Check for brackets OR if buffer gets long without one
-                                if (!visualTriggered) {
-                                    if (sentenceBuffer.includes(']')) {
-                                        visualTriggered = true;
-                                        const videoMatch = fullReplyTracker.match(/\[VIDEO:\s*(.*?)\]/i);
-                                        const visualMatch = fullReplyTracker.match(/\[VISUAL:\s*(.*?)\]/i);
-                                        
-                                        if (videoMatch) playYouTubeVideo(videoMatch[1] + " science explanation");
-                                        else if (visualMatch) updateVisualBoard(visualMatch[1] + " science");
-                                        else updateVisualBoard(message + " science"); // Failsafe
-                                    } else if (sentenceBuffer.length > 50 && !sentenceBuffer.includes('[')) {
-                                        // The AI forgot to use a tag entirely. Generate a visual based on the user's question.
-                                        visualTriggered = true;
-                                        updateVisualBoard(message + " science concept");
-                                    }
+                                // VISUALIZATION: Apply AI tags if present
+                                if (!visualTriggered && sentenceBuffer.includes(']')) {
+                                    visualTriggered = true;
+                                    const videoMatch = fullReplyTracker.match(/\[VIDEO:\s*(.*?)\]/i);
+                                    const visualMatch = fullReplyTracker.match(/\[VISUAL:\s*(.*?)\]/i);
+                                    
+                                    if (videoMatch) playYouTubeVideo(videoMatch[1] + " science explanation animation");
+                                    else if (visualMatch) updateVisualBoard(visualMatch[1] + " science diagram");
                                 }
 
-                                // SPEAK SENTENCES
+                                // SPEAK FLUENTLY: Chunk at punctuation marks
                                 if (/[.?!।]\s/.test(sentenceBuffer) || sentenceBuffer.endsWith('\n')) {
                                     let cleanText = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
                                     if (cleanText) speakOutLoud(cleanText);
@@ -186,7 +210,7 @@
                     }
                 }
 
-                // Clean up leftover words
+                // Final cleanup of leftover words
                 let finalSentence = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
                 if (finalSentence) speakOutLoud(finalSentence);
 
@@ -194,18 +218,18 @@
 
             } catch (error) {
                 console.error("Connection error:", error);
-                speakOutLoud("I am sorry, I am having trouble connecting to my brain network right now.");
+                speakOutLoud("I am sorry, my network connection failed. Please ask that again.");
             }
         }
 
         // ==========================================
-        // VISUALIZATIONS
+        // MANDATORY VISUALIZATIONS
         // ==========================================
         function updateVisualBoard(keyword) {
             videoLayer.style.display = 'none';
             videoLayer.innerHTML = ''; 
             
-            // AI Image Generator Failsafe (No API Key Required)
+            // AI Image Generator: Guaranteed visuals, no key needed.
             const formattedKeyword = encodeURIComponent(keyword + " highly detailed 3d educational render");
             const newImageUrl = `https://image.pollinations.ai/prompt/${formattedKeyword}?width=1920&height=1080&nologo=true`;
             visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
@@ -213,6 +237,7 @@
 
         async function playYouTubeVideo(query) {
             if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE" || !YOUTUBE_API_KEY) {
+                // Fall back to instant image if no API key is provided
                 updateVisualBoard(query); 
                 return;
             }
@@ -243,7 +268,7 @@
         }
 
         // ==========================================
-        // BULLETPROOF TEXT TO SPEECH
+        // TEXT TO SPEECH (Auto-Language)
         // ==========================================
         function speakOutLoud(text) {
             if (!isSessionLive || !text) return;
@@ -251,7 +276,7 @@
             const utterance = new SpeechSynthesisUtterance(text);
             const voices = window.speechSynthesis.getVoices();
             
-            // Auto-Language Detection based on text characters
+            // Detect characters in text to choose the correct voice
             const hasBengali = /[\u0980-\u09FF]/.test(text);
             const hasHindi = /[\u0900-\u097F]/.test(text);
             
@@ -265,15 +290,12 @@
             }
             
             if (targetVoice) utterance.voice = targetVoice;
-            
             utterance.rate = 1.0; 
             utterance.pitch = 0.9;
             
-            // Let the native browser handle the queue directly
             window.speechSynthesis.speak(utterance);
         }
         
-        // Ensure voices load
         if (speechSynthesis.onvoiceschanged !== undefined) {
             speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
         }
