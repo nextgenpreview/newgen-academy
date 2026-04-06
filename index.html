@@ -3,302 +3,237 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NewGen Academy | Ken Live</title>
+    <title>NewGen Academy | Ken the Science Tutor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        body { margin: 0; overflow: hidden; background: linear-gradient(135deg, #004d40, #fff9c4); font-family: sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #image-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 2; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); }
+        #dynamic-image { max-width: 80%; max-height: 80%; border-radius: 20px; box-shadow: 0 0 50px rgba(0, 191, 165, 0.5); object-fit: contain; }
+        .ui-layer { position: relative; z-index: 10; pointer-events: none; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
+        .interactive { pointer-events: auto; }
+        .floating-icon { position: absolute; color: rgba(142, 36, 170, 0.3); font-size: 2rem; animation: float 6s infinite ease-in-out; z-index: 0; }
+        @keyframes float { 0% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-20px) rotate(10deg); } 100% { transform: translateY(0) rotate(0deg); } }
         
-        #visual-board { position: absolute; width: 100%; height: 100%; background-color: #111; background-size: cover; background-position: center; z-index: 1; transition: background-image 0.8s ease-in-out; }
-        
-        #video-layer { position: absolute; width: 100%; height: 100%; z-index: 2; display: none; background: #000; }
-        #video-layer iframe { width: 100%; height: 100%; border: none; pointer-events: auto; }
-        
-        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 15%, transparent 85%, rgba(0,0,0,0.8) 100%); }
-        
-        .top-bar { padding: 20px; display: flex; justify-content: space-between; align-items: center; pointer-events: auto; }
-        h1 { margin: 0; font-size: 2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
-        select { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; padding: 10px 15px; border-radius: 8px; font-size: 1.1rem; cursor: pointer; outline: none; }
-        
-        .bottom-controls { padding: 40px; display: flex; justify-content: center; pointer-events: auto; }
-        
-        /* Mic button starts green, becomes red when active */
-        .btn-mic { width: 80px; height: 80px; border-radius: 50%; border: none; background: #4CAF50; color: white; font-size: 2rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; }
-        .btn-mic.active { background: #f44336; box-shadow: 0 0 20px #f44336; animation: pulse 1.5s infinite; }
-        
-        @keyframes pulse { 
-            0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(244, 67, 54, 0.7); } 
-            70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(244, 67, 54, 0); } 
-            100% { transform: scale(1); } 
-        }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        .state-listening { background-color: #ef4444; animation: pulse-red 2s infinite; }
+        .state-thinking { background-color: #eab308; box-shadow: 0 0 20px rgba(234, 179, 8, 0.6); }
+        .state-speaking { background-color: #3b82f6; box-shadow: 0 0 20px rgba(59, 130, 246, 0.6); }
+        .state-error { background-color: #991b1b; }
+        .state-off { background-color: #22c55e; }
     </style>
 </head>
 <body>
+    <div class="floating-icon" style="top: 20%; left: 10%; animation-delay: 0s;">★</div>
+    <div class="floating-icon" style="top: 70%; left: 80%; animation-delay: 1s;">📖</div>
+    <div class="floating-icon" style="top: 40%; left: 85%; animation-delay: 2s;">✏️</div>
+    <div class="floating-icon" style="top: 80%; left: 20%; animation-delay: 3s;">🔬</div>
 
-    <div id="visual-board" style="background-image: url('https://image.pollinations.ai/prompt/beautiful%20universe%20science?width=1920&height=1080&nologo=true');"></div>
-    <div id="video-layer"></div>
-    
-    <div id="ui">
-        <div class="top-bar">
-            <h1>NewGen Academy</h1>
-            <select id="grade-selector">
-                <option value="Grades 1-5">Grades 1-5</option>
-                <option value="Grades 6-9">Grades 6-9</option>
-                <option value="Grades 10-12">Grades 10-12</option>
-                <option value="Honors">Honors</option>
-                <option value="Masters">Masters</option>
-                <option value="Ph.D">Ph.D</option>
-            </select>
-        </div>
-        <div class="bottom-controls">
-            <button id="mic" class="btn-mic">🎤</button>
+    <div id="canvas-container"></div>
+    <div id="image-container">
+        <img id="dynamic-image" src="" alt="AI Generated Science Visual">
+    </div>
+
+    <div class="ui-layer p-6">
+        <header class="interactive bg-[#0a0a0a] border-b-4 border-[#00bfa5] p-4 rounded-xl shadow-2xl flex justify-between items-center text-[#1e88e5]">
+            <h1 class="text-2xl font-bold tracking-widest text-white">NEWGEN ACADEMY <span class="text-sm font-normal text-[#00bfa5]">| SCIENCE</span></h1>
+            <div class="flex gap-4">
+                <select id="grade-select" class="bg-gray-800 text-white border border-[#00bfa5] rounded p-2 outline-none">
+                    <option value="1-5">Grades 1-5</option>
+                    <option value="6-9">Grades 6-9</option>
+                    <option value="10-12">Grades 10-12</option>
+                </select>
+                <select id="lang-select" class="bg-gray-800 text-white border border-[#00bfa5] rounded p-2 outline-none">
+                    <option value="en-IN">English</option>
+                    <option value="bn-IN">Bengali</option>
+                    <option value="hi-IN">Hindi</option>
+                </select>
+            </div>
+        </header>
+
+        <div id="status-text" class="text-center text-white font-bold tracking-widest text-xl drop-shadow-md mt-4"></div> 
+
+        <div class="flex justify-end pb-4 pr-4">
+            <button id="mic-btn" class="interactive state-off w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+            </button>
         </div>
     </div>
 
     <script>
-        // ==========================================
-        // CONFIGURATION
-        // ==========================================
-        const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/";
-        const YOUTUBE_API_KEY = "PASTE_YOUR_YOUTUBE_API_KEY_HERE"; 
-
-        let isSessionLive = false;
-        let recognition;
-        let conversationHistory = []; 
+        // --- ✅ CLOUDFLARE WORKER URL ✅ ---
+        const CLOUDFLARE_WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev";
         
-        // Smart Listening Variables
-        let speechBuffer = "";
-        let speechTimeout = null;
+        let scene, camera, renderer, currentObject;
+        const canvasContainer = document.getElementById('canvas-container');
+        const imageContainer = document.getElementById('image-container');
+        const dynamicImage = document.getElementById('dynamic-image');
         
-        const micBtn = document.getElementById('mic');
-        const gradeSelector = document.getElementById('grade-selector');
-        const visualBoard = document.getElementById('visual-board');
-        const videoLayer = document.getElementById('video-layer');
-
-        // ==========================================
-        // SMART SPEECH RECOGNITION (Listening & Waiting)
-        // ==========================================
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true; 
-            recognition.lang = 'en-IN'; // Best for picking up English, Hindi, and Bengali
-
-            recognition.onresult = async (event) => {
-                // 1. INSTANT INTERRUPTION
-                if (window.speechSynthesis.speaking) {
-                    window.speechSynthesis.cancel();
-                }
-
-                // 2. Clear timer as user is still talking
-                clearTimeout(speechTimeout);
-
-                let finalTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    }
-                }
-
-                if (finalTranscript.trim()) {
-                    // Accumulate sentences
-                    speechBuffer += " " + finalTranscript.trim();
-                    
-                    // 3. WAIT 2 SECONDS FOR USER TO FINISH
-                    speechTimeout = setTimeout(async () => {
-                        const fullQuestion = speechBuffer.trim();
-                        if (fullQuestion) {
-                            speechBuffer = ""; // Reset for next interaction
-                            
-                            // Immediately force visual update based on question
-                            updateVisualBoard(fullQuestion + " science");
-                            
-                            // Send to AI
-                            await askKen(fullQuestion);
-                        }
-                    }, 2000); 
-                }
-            };
+        function init3D() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            canvasContainer.appendChild(renderer.domElement);
             
-            recognition.onend = () => { 
-                // Auto-restart mic if session is live
-                if (isSessionLive) recognition.start(); 
-            };
-        } else {
-            alert("Please use Google Chrome for voice features.");
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5, 5, 5);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+
+            camera.position.z = 5;
+            animate3D();
         }
 
-        // ==========================================
-        // LIVE SESSION CONTROL
-        // ==========================================
-        micBtn.addEventListener('click', () => {
-            if (!isSessionLive) {
-                isSessionLive = true;
-                conversationHistory = []; 
-                speechBuffer = "";
-                micBtn.classList.add('active'); // Turns red
-                recognition.start();
-                speakOutLoud("Session started. Hi, I am Ken. Feel free to speak in English, Hindi, or Bengali. What shall we explore?");
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            if (currentObject) { currentObject.rotation.x += 0.01; currentObject.rotation.y += 0.01; }
+            renderer.render(scene, camera);
+        }
+
+        function renderVisuals(aiData) {
+            if (aiData.visual_type === 'image') {
+                canvasContainer.style.display = 'none';
+                imageContainer.style.display = 'flex';
+                dynamicImage.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(aiData.visual_prompt)}?width=1280&height=720&nologo=true`;
             } else {
-                isSessionLive = false;
-                micBtn.classList.remove('active'); // Turns green
+                imageContainer.style.display = 'none';
+                canvasContainer.style.display = 'block';
+                if (currentObject) scene.remove(currentObject);
+                let geometry = new THREE.SphereGeometry(1.5, 32, 32);
+                if (aiData.visual_prompt === 'cube') geometry = new THREE.BoxGeometry(2, 2, 2);
+                if (aiData.visual_prompt === 'torus') geometry = new THREE.TorusGeometry(1.5, 0.4, 16, 100);
+                const material = new THREE.MeshPhongMaterial({ color: "#00bfa5", shininess: 100 });
+                currentObject = new THREE.Mesh(geometry, material);
+                scene.add(currentObject);
+            }
+        }
+
+        let sessionActive = false; 
+        let kenIsBusy = false; 
+        window.speechUtterances = []; 
+        
+        const micBtn = document.getElementById('mic-btn');
+        const statusText = document.getElementById('status-text');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const synth = window.speechSynthesis;
+        let recognition = new SpeechRecognition();
+        
+        recognition.continuous = false; 
+        recognition.interimResults = false; 
+
+        function setUIState(state, customText = null) {
+            micBtn.className = 'interactive w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300';
+            if (state === 'off') { micBtn.classList.add('state-off'); statusText.innerText = ""; }
+            if (state === 'listening') { micBtn.classList.add('state-listening'); statusText.innerText = "Listening..."; }
+            if (state === 'thinking') { micBtn.classList.add('state-thinking'); statusText.innerText = "Ken is thinking..."; }
+            if (state === 'speaking') { micBtn.classList.add('state-speaking'); statusText.innerText = "Ken is speaking..."; }
+            if (state === 'error') { micBtn.classList.add('state-error'); statusText.innerText = customText || "Error Occurred"; }
+        }
+
+        function keepListening() {
+            if (sessionActive && !kenIsBusy) {
+                recognition.lang = document.getElementById('lang-select').value;
+                try { 
+                    recognition.start(); 
+                    setUIState('listening');
+                } catch(e) { } 
+            }
+        }
+
+        micBtn.addEventListener('click', () => {
+            if (!sessionActive) {
+                sessionActive = true;
+                kenIsBusy = false;
+                keepListening();
+            } else {
+                sessionActive = false;
+                kenIsBusy = false;
+                setUIState('off');
                 recognition.stop();
-                window.speechSynthesis.cancel();
-                videoLayer.style.display = 'none';
-                clearTimeout(speechTimeout);
+                synth.cancel(); 
+                imageContainer.style.display = 'none';
+                canvasContainer.style.display = 'block';
             }
         });
 
-        // ==========================================
-        // AI BRAIN CONNECTION & PARSING
-        // ==========================================
-        async function askKen(message) {
-            const gradeLevel = gradeSelector.value;
-            conversationHistory.push({ role: "user", content: message });
-
+        recognition.onresult = async (event) => {
+            if (!sessionActive) return;
+            
+            kenIsBusy = true;
+            setUIState('thinking');
+            const finalTranscript = event.results[0][0].transcript;
+            
             try {
-                const response = await fetch(WORKER_URL, {
+                const langName = document.getElementById('lang-select').options[document.getElementById('lang-select').selectedIndex].text;
+                const response = await fetch(CLOUDFLARE_WORKER_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        grade: gradeLevel,
-                        messages: conversationHistory
-                    })
+                    body: JSON.stringify({ text: finalTranscript, language: langName })
                 });
-
-                if (!response.ok) throw new Error("Server disconnected");
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder("utf-8");
-                let sentenceBuffer = "";
-                let fullReplyTracker = "";
-                let visualTriggered = false;
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n');
-
-                    for (const line of lines) {
-                        if (line.startsWith('data: ') && !line.includes('[DONE]')) {
-                            try {
-                                const data = JSON.parse(line.slice(6));
-                                const word = data.response;
-                                
-                                sentenceBuffer += word;
-                                fullReplyTracker += word;
-
-                                // VISUALIZATION: Apply AI tags if present
-                                if (!visualTriggered && sentenceBuffer.includes(']')) {
-                                    visualTriggered = true;
-                                    const videoMatch = fullReplyTracker.match(/\[VIDEO:\s*(.*?)\]/i);
-                                    const visualMatch = fullReplyTracker.match(/\[VISUAL:\s*(.*?)\]/i);
-                                    
-                                    if (videoMatch) playYouTubeVideo(videoMatch[1] + " science explanation animation");
-                                    else if (visualMatch) updateVisualBoard(visualMatch[1] + " science diagram");
-                                }
-
-                                // SPEAK FLUENTLY: Chunk at punctuation marks
-                                if (/[.?!।]\s/.test(sentenceBuffer) || sentenceBuffer.endsWith('\n')) {
-                                    let cleanText = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
-                                    if (cleanText) speakOutLoud(cleanText);
-                                    sentenceBuffer = ""; 
-                                }
-                            } catch(e) { }
-                        }
-                    }
+                
+                // IF CLOUDFLARE OR GROQ CRASHES, SHOW THE ERROR ON SCREEN
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || "Server responded with 500");
                 }
 
-                // Final cleanup of leftover words
-                let finalSentence = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
-                if (finalSentence) speakOutLoud(finalSentence);
-
-                conversationHistory.push({ role: "assistant", content: fullReplyTracker.replace(/\[.*?\]/g, '').trim() });
-
-            } catch (error) {
-                console.error("Connection error:", error);
-                speakOutLoud("I am sorry, my network connection failed. Please ask that again.");
-            }
-        }
-
-        // ==========================================
-        // MANDATORY VISUALIZATIONS
-        // ==========================================
-        function updateVisualBoard(keyword) {
-            videoLayer.style.display = 'none';
-            videoLayer.innerHTML = ''; 
-            
-            // AI Image Generator: Guaranteed visuals, no key needed.
-            const formattedKeyword = encodeURIComponent(keyword + " highly detailed 3d educational render");
-            const newImageUrl = `https://image.pollinations.ai/prompt/${formattedKeyword}?width=1920&height=1080&nologo=true`;
-            visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
-        }
-
-        async function playYouTubeVideo(query) {
-            if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE" || !YOUTUBE_API_KEY) {
-                // Fall back to instant image if no API key is provided
-                updateVisualBoard(query); 
-                return;
-            }
-
-            try {
-                const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`;
-                const response = await fetch(searchUrl);
                 const data = await response.json();
+                let rawResult = data.result;
+                let startIndex = rawResult.indexOf('{');
+                let endIndex = rawResult.lastIndexOf('}');
+                if (startIndex === -1 || endIndex === -1) throw new Error("AI failed to return JSON.");
+                
+                let cleanJsonString = rawResult.substring(startIndex, endIndex + 1).replace(/[\u0000-\u001F]+/g, " ");
+                const aiData = JSON.parse(cleanJsonString);
+                
+                renderVisuals(aiData);
+                
+                const utterance = new SpeechSynthesisUtterance(aiData.spoken_response);
+                utterance.lang = document.getElementById('lang-select').value;
+                window.speechUtterances.push(utterance); 
+                
+                utterance.onstart = () => { if (sessionActive) setUIState('speaking'); };
+                utterance.onend = () => {
+                    if (sessionActive) {
+                        kenIsBusy = false;
+                        keepListening();
+                    }
+                };
+                utterance.onerror = () => {
+                    if (sessionActive) { kenIsBusy = false; keepListening(); }
+                };
 
-                if (data.items && data.items.length > 0) {
-                    const videoId = data.items[0].id.videoId;
-                    visualBoard.style.backgroundImage = 'none';
-                    videoLayer.style.display = 'block';
-                    
-                    videoLayer.innerHTML = `
-                        <iframe 
-                            src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&loop=1&playlist=${videoId}" 
-                            allow="autoplay; encrypted-media" 
-                            allowfullscreen>
-                        </iframe>
-                    `;
-                } else {
-                    updateVisualBoard(query); 
-                }
+                synth.speak(utterance);
+
             } catch (error) {
-                updateVisualBoard(query); 
+                // PRINTS THE EXACT ERROR TO THE UI
+                console.error("System Error:", error);
+                setUIState('error', error.message);
+                
+                // Auto-restart after 4 seconds of showing the error
+                setTimeout(() => {
+                    if (sessionActive) {
+                        kenIsBusy = false;
+                        keepListening();
+                    }
+                }, 4000);
             }
-        }
+        };
 
-        // ==========================================
-        // TEXT TO SPEECH (Auto-Language)
-        // ==========================================
-        function speakOutLoud(text) {
-            if (!isSessionLive || !text) return;
-
-            const utterance = new SpeechSynthesisUtterance(text);
-            const voices = window.speechSynthesis.getVoices();
-            
-            // Detect characters in text to choose the correct voice
-            const hasBengali = /[\u0980-\u09FF]/.test(text);
-            const hasHindi = /[\u0900-\u097F]/.test(text);
-            
-            let targetVoice;
-            if (hasBengali) {
-                targetVoice = voices.find(v => v.lang.includes('bn'));
-            } else if (hasHindi) {
-                targetVoice = voices.find(v => v.lang.includes('hi'));
-            } else {
-                targetVoice = voices.find(v => v.lang === 'en-GB' || v.lang === 'en-IN' || v.lang === 'en-US');
+        recognition.onend = () => {
+            if (sessionActive && !kenIsBusy) {
+                setTimeout(keepListening, 100);
             }
-            
-            if (targetVoice) utterance.voice = targetVoice;
-            utterance.rate = 1.0; 
-            utterance.pitch = 0.9;
-            
-            window.speechSynthesis.speak(utterance);
-        }
-        
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
-        }
+        };
+
+        window.onload = init3D;
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
