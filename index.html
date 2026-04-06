@@ -7,7 +7,7 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
         
-        #visual-board { position: absolute; width: 100%; height: 100%; background-color: #111; background-size: cover; background-position: center; z-index: 1; transition: background-image 1s ease-in-out; }
+        #visual-board { position: absolute; width: 100%; height: 100%; background-color: #111; background-size: cover; background-position: center; z-index: 1; transition: background-image 0.8s ease-in-out; }
         
         #video-layer { position: absolute; width: 100%; height: 100%; z-index: 2; display: none; background: #000; }
         #video-layer iframe { width: 100%; height: 100%; border: none; pointer-events: auto; }
@@ -16,7 +16,6 @@
         
         .top-bar { padding: 20px; display: flex; justify-content: space-between; align-items: center; pointer-events: auto; }
         h1 { margin: 0; font-size: 2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
-        
         select { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; padding: 10px 15px; border-radius: 8px; font-size: 1.1rem; cursor: pointer; outline: none; }
         
         .bottom-controls { padding: 40px; display: flex; justify-content: center; pointer-events: auto; }
@@ -59,8 +58,6 @@
         let isSessionLive = false;
         let recognition;
         let conversationHistory = []; 
-        let speechQueue = [];
-        let isSpeaking = false;
         
         const micBtn = document.getElementById('mic');
         const gradeSelector = document.getElementById('grade-selector');
@@ -75,15 +72,12 @@
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true; 
-            
-            // Set to Indian English default to allow a mix of English, Hindi, and Bengali accent detection
-            recognition.lang = 'en-IN'; 
+            recognition.lang = 'en-IN'; // Picks up mixed English/Hindi/Bengali accents well
 
             recognition.onresult = async (event) => {
+                // INSTANT INTERRUPTION
                 if (window.speechSynthesis.speaking) {
                     window.speechSynthesis.cancel();
-                    speechQueue = []; // Clear queue on interruption
-                    isSpeaking = false;
                 }
 
                 let finalTranscript = '';
@@ -100,6 +94,8 @@
             };
             
             recognition.onend = () => { if (isSessionLive) recognition.start(); };
+        } else {
+            alert("Please use Google Chrome for voice features.");
         }
 
         // ==========================================
@@ -111,25 +107,22 @@
                 conversationHistory = []; 
                 micBtn.classList.add('active');
                 recognition.start();
-                queueSpeech("Hi, I am Ken. Feel free to speak to me in English, Hindi, or Bengali. What science topic shall we explore?");
+                speakOutLoud("Session started. Hi, I am Ken. What science topic shall we explore today?");
             } else {
                 isSessionLive = false;
                 micBtn.classList.remove('active');
                 recognition.stop();
                 window.speechSynthesis.cancel();
-                speechQueue = [];
-                isSpeaking = false;
                 videoLayer.style.display = 'none';
             }
         });
 
         // ==========================================
-        // AI BRAIN CONNECTION (Streaming)
+        // AI BRAIN CONNECTION & PARSING
         // ==========================================
         async function askKen(message) {
             const gradeLevel = gradeSelector.value;
             conversationHistory.push({ role: "user", content: message });
-            if (conversationHistory.length > 8) conversationHistory = conversationHistory.slice(-8);
 
             try {
                 const response = await fetch(WORKER_URL, {
@@ -141,10 +134,13 @@
                     })
                 });
 
+                if (!response.ok) throw new Error("Server disconnected");
+
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let sentenceBuffer = "";
                 let fullReplyTracker = "";
+                let visualTriggered = false;
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -154,7 +150,7 @@
                     const lines = chunk.split('\n');
 
                     for (const line of lines) {
-                        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                        if (line.startsWith('data: ') && !line.includes('[DONE]')) {
                             try {
                                 const data = JSON.parse(line.slice(6));
                                 const word = data.response;
@@ -162,26 +158,27 @@
                                 sentenceBuffer += word;
                                 fullReplyTracker += word;
 
-                                // 1. Instant Visual Trigger Check
-                                if (sentenceBuffer.includes(']')) {
-                                    const videoMatch = fullReplyTracker.match(/\[VIDEO:\s*(.*?)\]/i);
-                                    const visualMatch = fullReplyTracker.match(/\[VISUAL:\s*(.*?)\]/i);
-                                    
-                                    if (videoMatch) {
-                                        playYouTubeVideo(videoMatch[1] + " science educational animation");
-                                        fullReplyTracker = fullReplyTracker.replace(videoMatch[0], ''); // Clear tag so it doesn't trigger twice
-                                        sentenceBuffer = sentenceBuffer.replace(videoMatch[0], '');
-                                    } else if (visualMatch) {
-                                        updateVisualBoard(visualMatch[1] + " science diagram");
-                                        fullReplyTracker = fullReplyTracker.replace(visualMatch[0], '');
-                                        sentenceBuffer = sentenceBuffer.replace(visualMatch[0], '');
+                                // VISUALIZATION FAILSAFE: Check for brackets OR if buffer gets long without one
+                                if (!visualTriggered) {
+                                    if (sentenceBuffer.includes(']')) {
+                                        visualTriggered = true;
+                                        const videoMatch = fullReplyTracker.match(/\[VIDEO:\s*(.*?)\]/i);
+                                        const visualMatch = fullReplyTracker.match(/\[VISUAL:\s*(.*?)\]/i);
+                                        
+                                        if (videoMatch) playYouTubeVideo(videoMatch[1] + " science explanation");
+                                        else if (visualMatch) updateVisualBoard(visualMatch[1] + " science");
+                                        else updateVisualBoard(message + " science"); // Failsafe
+                                    } else if (sentenceBuffer.length > 50 && !sentenceBuffer.includes('[')) {
+                                        // The AI forgot to use a tag entirely. Generate a visual based on the user's question.
+                                        visualTriggered = true;
+                                        updateVisualBoard(message + " science concept");
                                     }
                                 }
 
-                                // 2. Fluent Sentence Chunking (Splits on English, Hindi, and Bengali punctuation)
+                                // SPEAK SENTENCES
                                 if (/[.?!।]\s/.test(sentenceBuffer) || sentenceBuffer.endsWith('\n')) {
-                                    let textToSpeak = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
-                                    if (textToSpeak) queueSpeech(textToSpeak);
+                                    let cleanText = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
+                                    if (cleanText) speakOutLoud(cleanText);
                                     sentenceBuffer = ""; 
                                 }
                             } catch(e) { }
@@ -189,33 +186,34 @@
                     }
                 }
 
-                // Leftover words
+                // Clean up leftover words
                 let finalSentence = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
-                if (finalSentence) queueSpeech(finalSentence);
+                if (finalSentence) speakOutLoud(finalSentence);
 
                 conversationHistory.push({ role: "assistant", content: fullReplyTracker.replace(/\[.*?\]/g, '').trim() });
 
             } catch (error) {
                 console.error("Connection error:", error);
+                speakOutLoud("I am sorry, I am having trouble connecting to my brain network right now.");
             }
         }
 
         // ==========================================
-        // GUARANTEED VISUALIZATION LOGIC
+        // VISUALIZATIONS
         // ==========================================
         function updateVisualBoard(keyword) {
             videoLayer.style.display = 'none';
             videoLayer.innerHTML = ''; 
             
-            // USING POLLINATIONS AI - No API key needed, guarantees a generated image!
-            const formattedKeyword = encodeURIComponent(keyword + " highly detailed 3d render educational");
+            // AI Image Generator Failsafe (No API Key Required)
+            const formattedKeyword = encodeURIComponent(keyword + " highly detailed 3d educational render");
             const newImageUrl = `https://image.pollinations.ai/prompt/${formattedKeyword}?width=1920&height=1080&nologo=true`;
             visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
         }
 
         async function playYouTubeVideo(query) {
-            if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE") {
-                updateVisualBoard(query); // Fallback to image instantly if no key
+            if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE" || !YOUTUBE_API_KEY) {
+                updateVisualBoard(query); 
                 return;
             }
 
@@ -245,31 +243,19 @@
         }
 
         // ==========================================
-        // FLUENT TEXT TO SPEECH (Auto-Language Detection)
+        // BULLETPROOF TEXT TO SPEECH
         // ==========================================
-        function queueSpeech(text) {
+        function speakOutLoud(text) {
             if (!isSessionLive || !text) return;
-            speechQueue.push(text);
-            if (!isSpeaking) playNextInQueue();
-        }
 
-        function playNextInQueue() {
-            if (speechQueue.length === 0) {
-                isSpeaking = false;
-                return;
-            }
-            
-            isSpeaking = true;
-            const text = speechQueue.shift();
             const utterance = new SpeechSynthesisUtterance(text);
             const voices = window.speechSynthesis.getVoices();
             
-            // DYNAMIC LANGUAGE DETECTION based on characters in the text
+            // Auto-Language Detection based on text characters
             const hasBengali = /[\u0980-\u09FF]/.test(text);
             const hasHindi = /[\u0900-\u097F]/.test(text);
             
             let targetVoice;
-            
             if (hasBengali) {
                 targetVoice = voices.find(v => v.lang.includes('bn'));
             } else if (hasHindi) {
@@ -283,13 +269,14 @@
             utterance.rate = 1.0; 
             utterance.pitch = 0.9;
             
-            utterance.onend = () => { playNextInQueue(); };
-            utterance.onerror = () => { playNextInQueue(); };
-            
+            // Let the native browser handle the queue directly
             window.speechSynthesis.speak(utterance);
         }
         
-        window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
+        // Ensure voices load
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
     </script>
 </body>
 </html>
