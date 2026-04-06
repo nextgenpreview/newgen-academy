@@ -9,8 +9,9 @@
     <style>
         body { margin: 0; overflow: hidden; background: linear-gradient(135deg, #004d40, #fff9c4); font-family: sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-        #image-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 2; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); }
+        #image-container, #youtube-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 2; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); }
         #dynamic-image { max-width: 80%; max-height: 80%; border-radius: 20px; box-shadow: 0 0 50px rgba(0, 191, 165, 0.5); object-fit: contain; }
+        #youtube-iframe { width: 80%; height: 80%; border-radius: 20px; box-shadow: 0 0 50px rgba(220, 38, 38, 0.5); border: none; }
         .ui-layer { position: relative; z-index: 10; pointer-events: none; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
         .interactive { pointer-events: auto; }
         .floating-icon { position: absolute; color: rgba(142, 36, 170, 0.3); font-size: 2rem; animation: float 6s infinite ease-in-out; z-index: 0; }
@@ -31,28 +32,24 @@
     <div class="floating-icon" style="top: 80%; left: 20%; animation-delay: 3s;">🔬</div>
 
     <div id="canvas-container"></div>
-    <div id="image-container">
-        <img id="dynamic-image" src="" alt="AI Generated Science Visual">
-    </div>
+    <div id="image-container"><img id="dynamic-image" src="" alt="AI Generated Science Visual"></div>
+    <div id="youtube-container"><iframe id="youtube-iframe" src="" allowfullscreen></iframe></div>
 
     <div class="ui-layer p-6">
         <header class="interactive bg-[#0a0a0a] border-b-4 border-[#00bfa5] p-4 rounded-xl shadow-2xl flex justify-between items-center text-[#1e88e5]">
             <h1 class="text-2xl font-bold tracking-widest text-white">NEWGEN ACADEMY <span class="text-sm font-normal text-[#00bfa5]">| SCIENCE</span></h1>
             <div class="flex gap-4">
                 <select id="grade-select" class="bg-gray-800 text-white border border-[#00bfa5] rounded p-2 outline-none">
-                    <option value="1-5">Grades 1-5</option>
-                    <option value="6-9">Grades 6-9</option>
-                    <option value="10-12">Grades 10-12</option>
+                    <option value="1-5">Grades 1-5</option><option value="6-9">Grades 6-9</option><option value="10-12">Grades 10-12</option>
                 </select>
                 <select id="lang-select" class="bg-gray-800 text-white border border-[#00bfa5] rounded p-2 outline-none">
-                    <option value="en-IN">English</option>
-                    <option value="bn-IN">Bengali</option>
-                    <option value="hi-IN">Hindi</option>
+                    <option value="en-IN">English</option><option value="bn-IN">Bengali</option><option value="hi-IN">Hindi</option>
                 </select>
             </div>
         </header>
 
         <div id="status-text" class="text-center text-white font-bold tracking-widest text-xl drop-shadow-md mt-4"></div> 
+        <div id="live-transcript" class="text-center text-gray-300 italic mt-2 drop-shadow-md"></div>
 
         <div class="flex justify-end pb-4 pr-4">
             <button id="mic-btn" class="interactive state-off w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300">
@@ -68,7 +65,10 @@
         let scene, camera, renderer, currentObject;
         const canvasContainer = document.getElementById('canvas-container');
         const imageContainer = document.getElementById('image-container');
+        const youtubeContainer = document.getElementById('youtube-container');
         const dynamicImage = document.getElementById('dynamic-image');
+        const youtubeIframe = document.getElementById('youtube-iframe');
+        const liveTranscriptUI = document.getElementById('live-transcript');
         
         function init3D() {
             scene = new THREE.Scene();
@@ -81,7 +81,6 @@
             light.position.set(5, 5, 5);
             scene.add(light);
             scene.add(new THREE.AmbientLight(0x404040));
-
             camera.position.z = 5;
             animate3D();
         }
@@ -93,19 +92,26 @@
         }
 
         function renderVisuals(aiData) {
-            if (aiData.visual_type === 'image') {
-                canvasContainer.style.display = 'none';
+            canvasContainer.style.display = 'none';
+            imageContainer.style.display = 'none';
+            youtubeContainer.style.display = 'none';
+
+            if (aiData.visual_type === 'youtube') {
+                youtubeContainer.style.display = 'flex';
+                // Genius hack to instantly embed a YouTube search result
+                youtubeIframe.src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(aiData.visual_prompt)}`;
+            } 
+            else if (aiData.visual_type === 'image') {
                 imageContainer.style.display = 'flex';
                 dynamicImage.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(aiData.visual_prompt)}?width=1280&height=720&nologo=true`;
-            } else {
-                imageContainer.style.display = 'none';
+            } 
+            else {
                 canvasContainer.style.display = 'block';
                 if (currentObject) scene.remove(currentObject);
                 let geometry = new THREE.SphereGeometry(1.5, 32, 32);
                 if (aiData.visual_prompt === 'cube') geometry = new THREE.BoxGeometry(2, 2, 2);
                 if (aiData.visual_prompt === 'torus') geometry = new THREE.TorusGeometry(1.5, 0.4, 16, 100);
-                const material = new THREE.MeshPhongMaterial({ color: "#00bfa5", shininess: 100 });
-                currentObject = new THREE.Mesh(geometry, material);
+                currentObject = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color: "#00bfa5", shininess: 100 }));
                 scene.add(currentObject);
             }
         }
@@ -114,20 +120,23 @@
         let kenIsBusy = false; 
         window.speechUtterances = []; 
         
+        let fullTranscriptAccumulator = ""; // Stores your consecutive sentences
+        let thoughtBufferTimer = null; // The timer that waits for you to finish breathing
+        
         const micBtn = document.getElementById('mic-btn');
         const statusText = document.getElementById('status-text');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const synth = window.speechSynthesis;
         let recognition = new SpeechRecognition();
         
-        recognition.continuous = false; 
-        recognition.interimResults = false; 
+        recognition.continuous = true; // Stay on forever
+        recognition.interimResults = true; // Catch words as they are spoken
 
         function setUIState(state, customText = null) {
             micBtn.className = 'interactive w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300';
-            if (state === 'off') { micBtn.classList.add('state-off'); statusText.innerText = ""; }
+            if (state === 'off') { micBtn.classList.add('state-off'); statusText.innerText = ""; liveTranscriptUI.innerText = ""; }
             if (state === 'listening') { micBtn.classList.add('state-listening'); statusText.innerText = "Listening..."; }
-            if (state === 'thinking') { micBtn.classList.add('state-thinking'); statusText.innerText = "Ken is thinking..."; }
+            if (state === 'thinking') { micBtn.classList.add('state-thinking'); statusText.innerText = "Ken is analyzing..."; liveTranscriptUI.innerText = ""; }
             if (state === 'speaking') { micBtn.classList.add('state-speaking'); statusText.innerText = "Ken is speaking..."; }
             if (state === 'error') { micBtn.classList.add('state-error'); statusText.innerText = customText || "Error Occurred"; }
         }
@@ -135,10 +144,7 @@
         function keepListening() {
             if (sessionActive && !kenIsBusy) {
                 recognition.lang = document.getElementById('lang-select').value;
-                try { 
-                    recognition.start(); 
-                    setUIState('listening');
-                } catch(e) { } 
+                try { recognition.start(); setUIState('listening'); } catch(e) { } 
             }
         }
 
@@ -146,6 +152,7 @@
             if (!sessionActive) {
                 sessionActive = true;
                 kenIsBusy = false;
+                fullTranscriptAccumulator = "";
                 keepListening();
             } else {
                 sessionActive = false;
@@ -153,80 +160,83 @@
                 setUIState('off');
                 recognition.stop();
                 synth.cancel(); 
-                imageContainer.style.display = 'none';
-                canvasContainer.style.display = 'block';
+                renderVisuals({visual_type: '3d'}); // Reset visuals
             }
         });
 
-        recognition.onresult = async (event) => {
-            if (!sessionActive) return;
-            
-            kenIsBusy = true;
-            setUIState('thinking');
-            const finalTranscript = event.results[0][0].transcript;
-            
-            try {
-                const langName = document.getElementById('lang-select').options[document.getElementById('lang-select').selectedIndex].text;
-                const response = await fetch(CLOUDFLARE_WORKER_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: finalTranscript, language: langName })
-                });
-                
-                // IF CLOUDFLARE OR GROQ CRASHES, SHOW THE ERROR ON SCREEN
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error || "Server responded with 500");
+        // The Engine: Deep Listening & Interruption
+        recognition.onresult = (event) => {
+            if (!sessionActive || kenIsBusy) return;
+
+            let interim = '';
+            let justFinalized = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    justFinalized += event.results[i][0].transcript + " ";
+                } else {
+                    interim += event.results[i][0].transcript;
                 }
+            }
 
-                const data = await response.json();
-                let rawResult = data.result;
-                let startIndex = rawResult.indexOf('{');
-                let endIndex = rawResult.lastIndexOf('}');
-                if (startIndex === -1 || endIndex === -1) throw new Error("AI failed to return JSON.");
-                
-                let cleanJsonString = rawResult.substring(startIndex, endIndex + 1).replace(/[\u0000-\u001F]+/g, " ");
-                const aiData = JSON.parse(cleanJsonString);
-                
-                renderVisuals(aiData);
-                
-                const utterance = new SpeechSynthesisUtterance(aiData.spoken_response);
-                utterance.lang = document.getElementById('lang-select').value;
-                window.speechUtterances.push(utterance); 
-                
-                utterance.onstart = () => { if (sessionActive) setUIState('speaking'); };
-                utterance.onend = () => {
-                    if (sessionActive) {
-                        kenIsBusy = false;
-                        keepListening();
+            // TRUE INTERRUPTION: If you make a sound while Ken is talking, shut him up instantly
+            if ((justFinalized || interim).trim().length > 0 && synth.speaking) {
+                synth.cancel();
+            }
+
+            fullTranscriptAccumulator += justFinalized;
+            liveTranscriptUI.innerText = fullTranscriptAccumulator + interim; // Show you what it hears
+
+            // THE THOUGHT BUFFER
+            clearTimeout(thoughtBufferTimer); // Stop the clock! The user is still talking.
+
+            if (fullTranscriptAccumulator.trim().length > 0) {
+                // The user paused. Start a 1.5-second countdown.
+                thoughtBufferTimer = setTimeout(async () => {
+                    // Time's up! Send the complete consecutive sentences to Groq.
+                    kenIsBusy = true;
+                    setUIState('thinking');
+                    
+                    const textToSend = fullTranscriptAccumulator;
+                    fullTranscriptAccumulator = ""; // Clear memory for the next conversation
+
+                    try {
+                        const langName = document.getElementById('lang-select').options[document.getElementById('lang-select').selectedIndex].text;
+                        const response = await fetch(CLOUDFLARE_WORKER_URL, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: textToSend, language: langName })
+                        });
+                        
+                        if (!response.ok) throw new Error("Server Error");
+
+                        const data = await response.json();
+                        let rawResult = data.result;
+                        let start = rawResult.indexOf('{');
+                        let end = rawResult.lastIndexOf('}');
+                        let cleanJsonString = rawResult.substring(start, end + 1).replace(/[\u0000-\u001F]+/g, " ");
+                        const aiData = JSON.parse(cleanJsonString);
+                        
+                        renderVisuals(aiData);
+                        
+                        const utterance = new SpeechSynthesisUtterance(aiData.spoken_response);
+                        utterance.lang = document.getElementById('lang-select').value;
+                        window.speechUtterances.push(utterance); 
+                        
+                        utterance.onstart = () => { if (sessionActive) setUIState('speaking'); };
+                        utterance.onend = () => { if (sessionActive) { kenIsBusy = false; keepListening(); } };
+                        utterance.onerror = () => { if (sessionActive) { kenIsBusy = false; keepListening(); } };
+
+                        synth.speak(utterance);
+
+                    } catch (error) {
+                        setUIState('error', "Connection issue");
+                        setTimeout(() => { if (sessionActive) { kenIsBusy = false; keepListening(); } }, 3000);
                     }
-                };
-                utterance.onerror = () => {
-                    if (sessionActive) { kenIsBusy = false; keepListening(); }
-                };
-
-                synth.speak(utterance);
-
-            } catch (error) {
-                // PRINTS THE EXACT ERROR TO THE UI
-                console.error("System Error:", error);
-                setUIState('error', error.message);
-                
-                // Auto-restart after 4 seconds of showing the error
-                setTimeout(() => {
-                    if (sessionActive) {
-                        kenIsBusy = false;
-                        keepListening();
-                    }
-                }, 4000);
+                }, 1500); // Wait 1.5 seconds of silence before firing
             }
         };
 
-        recognition.onend = () => {
-            if (sessionActive && !kenIsBusy) {
-                setTimeout(keepListening, 100);
-            }
-        };
+        recognition.onend = () => { if (sessionActive && !kenIsBusy) setTimeout(keepListening, 100); };
 
         window.onload = init3D;
         window.addEventListener('resize', () => {
