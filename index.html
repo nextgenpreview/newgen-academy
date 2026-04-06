@@ -26,7 +26,7 @@
             background-color: #000;
             background-size: cover;
             background-position: center;
-            background-image: url('https://images.unsplash.com/photo-1507413245164-6160d8298b31?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80'); /* Default Science BG */
+            background-image: url('https://images.unsplash.com/photo-1507413245164-6160d8298b31?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
             transition: background-image 1s ease-in-out;
             z-index: 1;
         }
@@ -42,7 +42,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            pointer-events: none; /* Let clicks pass through to board if needed */
+            pointer-events: none; 
         }
 
         .header {
@@ -52,12 +52,14 @@
             align-items: center;
             background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
             pointer-events: auto;
+            gap: 15px;
         }
 
         h1 {
             margin: 0;
             font-size: 2rem;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            flex-grow: 1;
         }
 
         select {
@@ -89,7 +91,7 @@
             height: 80px;
             border-radius: 50%;
             border: none;
-            background-color: #4CAF50; /* Green by default */
+            background-color: #4CAF50;
             color: white;
             font-size: 2rem;
             cursor: pointer;
@@ -101,7 +103,7 @@
         }
 
         #mic-btn.active {
-            background-color: #f44336; /* Red when live */
+            background-color: #f44336;
             box-shadow: 0 0 20px #f44336;
             animation: pulse 1.5s infinite;
         }
@@ -120,6 +122,13 @@
     <div id="ui-layer">
         <div class="header">
             <h1>NewGen Academy</h1>
+            
+            <select id="language-selector">
+                <option value="en-IN">English</option>
+                <option value="bn-IN">Bengali</option>
+                <option value="hi-IN">Hindi</option>
+            </select>
+
             <select id="grade-selector">
                 <option value="Grades 1-5">Grades 1-5</option>
                 <option value="Grades 6-9">Grades 6-9</option>
@@ -139,7 +148,7 @@
         // ==========================================
         // CONFIGURATION
         // ==========================================
-        const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/"; // <-- PASTE YOUR URL HERE
+        const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/";
 
         // State Variables
         let isSessionLive = false;
@@ -148,6 +157,7 @@
         // UI Elements
         const micBtn = document.getElementById('mic-btn');
         const gradeSelector = document.getElementById('grade-selector');
+        const languageSelector = document.getElementById('language-selector');
         const visualBoard = document.getElementById('visual-board');
 
         // ==========================================
@@ -156,9 +166,17 @@
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
-            recognition.continuous = true; // Keep listening during the session
+            recognition.continuous = true;
             recognition.interimResults = false;
-            recognition.lang = 'en-US';
+            recognition.lang = languageSelector.value; // Set initial language
+
+            // Update listening language when dropdown changes
+            languageSelector.addEventListener('change', () => {
+                recognition.lang = languageSelector.value;
+                if (isSessionLive) {
+                    recognition.stop(); // Will auto-restart with new language via onend
+                }
+            });
 
             recognition.onresult = async (event) => {
                 const latestResult = event.results[event.results.length - 1];
@@ -172,13 +190,9 @@
 
             recognition.onerror = (event) => {
                 console.error("Speech recognition error:", event.error);
-                if(event.error === 'no-speech' && isSessionLive) {
-                    // Ignore silent pauses, keep session alive
-                }
             };
             
             recognition.onend = () => {
-                // If it disconnects but session should be live, restart it automatically
                 if (isSessionLive) recognition.start();
             };
         } else {
@@ -190,17 +204,22 @@
         // ==========================================
         micBtn.addEventListener('click', () => {
             if (!isSessionLive) {
-                // Start Session
                 isSessionLive = true;
                 micBtn.classList.add('active');
                 recognition.start();
-                speakOutLoud("Session started. Hi, I am Ken. What science topic shall we explore?");
+                
+                // Greet in the selected language
+                const langName = languageSelector.options[languageSelector.selectedIndex].text;
+                let greeting = "Session started. Hi, I am Ken. What science topic shall we explore?";
+                if (langName === "Bengali") greeting = "সেশন শুরু হয়েছে। নমস্কার, আমি কেন। আজ আমরা বিজ্ঞানের কোন বিষয় নিয়ে আলোচনা করব?";
+                if (langName === "Hindi") greeting = "सत्र शुरू हो गया है। नमस्ते, मैं केन हूँ। आज हम विज्ञान के किस विषय पर चर्चा करेंगे?";
+                
+                speakOutLoud(greeting);
             } else {
-                // End Session
                 isSessionLive = false;
                 micBtn.classList.remove('active');
                 recognition.stop();
-                window.speechSynthesis.cancel(); // Stop Ken from talking
+                window.speechSynthesis.cancel();
             }
         });
 
@@ -208,12 +227,9 @@
         // API COMMUNICATION WITH WORKER
         // ==========================================
         async function askKen(message) {
-            if (!WORKER_URL || WORKER_URL === "https://newgen-brain.newpreviewgen.workers.dev/") {
-                console.error("Please set your Cloudflare Worker URL in the code.");
-                return;
-            }
-
             const gradeLevel = gradeSelector.value;
+            // Get the human-readable language name (English, Bengali, Hindi)
+            const selectedLanguage = languageSelector.options[languageSelector.selectedIndex].text;
 
             try {
                 const response = await fetch(WORKER_URL, {
@@ -221,11 +237,18 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         grade: gradeLevel,
+                        language: selectedLanguage, // Send language to Llama 3
                         message: message
                     })
                 });
 
                 const data = await response.json();
+                
+                if (data.error) {
+                    console.error("Worker error:", data.error);
+                    return;
+                }
+                
                 handleKenResponse(data.reply);
 
             } catch (error) {
@@ -237,14 +260,15 @@
         // RESPONSE PARSING & VISUALIZATION
         // ==========================================
         function handleKenResponse(replyText) {
-            // Check if Llama 3 included a visual tag, e.g., [VISUAL: solar system]
+            if (!replyText) return;
+            
             const visualMatch = replyText.match(/\[VISUAL:\s*(.*?)\]/i);
             let spokenText = replyText;
 
             if (visualMatch && visualMatch[1]) {
                 const searchKeyword = visualMatch[1];
-                updateVisualBoard(searchKeyword);
-                // Remove the tag so Ken doesn't read it out loud
+                // Always search images in English for better Unsplash results
+                updateVisualBoard(searchKeyword + " science");
                 spokenText = replyText.replace(visualMatch[0], '').trim(); 
             }
 
@@ -252,9 +276,7 @@
         }
 
         function updateVisualBoard(keyword) {
-            // Using Unsplash Source API as a simple placeholder for real-time visuals
-            // In production, you could hook this up to a 3D library or video API
-            const formattedKeyword = encodeURIComponent(keyword + " science");
+            const formattedKeyword = encodeURIComponent(keyword);
             const newImageUrl = `https://source.unsplash.com/1920x1080/?${formattedKeyword}`;
             visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
         }
@@ -263,23 +285,33 @@
         // TEXT TO SPEECH (Ken's Voice)
         // ==========================================
         function speakOutLoud(text) {
-            if (!isSessionLive) return;
-            
-            // Cancel current speech if user triggers new response
+            if (!isSessionLive || !text) return;
             window.speechSynthesis.cancel(); 
 
             const utterance = new SpeechSynthesisUtterance(text);
-            
-            // Try to find a good male voice for Ken
             const voices = window.speechSynthesis.getVoices();
-            const kenVoice = voices.find(v => v.name.includes('Google UK English Male') || v.name.includes('Male')) || voices[0];
+            const currentLangCode = languageSelector.value; // 'en-IN', 'bn-IN', or 'hi-IN'
+            
+            // 1. Try to find an exact language match
+            let kenVoice = voices.find(v => v.lang === currentLangCode || v.lang.replace('_', '-') === currentLangCode);
+            
+            // 2. Fallback to just matching the base language (e.g., 'bn' or 'hi')
+            if (!kenVoice) {
+                const baseLang = currentLangCode.split('-')[0];
+                kenVoice = voices.find(v => v.lang.startsWith(baseLang));
+            }
+            
             if (kenVoice) utterance.voice = kenVoice;
             
             utterance.rate = 1.0;
-            utterance.pitch = 0.9; // Slightly deeper for a teacher
+            utterance.pitch = 0.9;
             
             window.speechSynthesis.speak(utterance);
         }
+        
+        window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.getVoices();
+        };
     </script>
 </body>
 </html>
