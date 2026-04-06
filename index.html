@@ -2,145 +2,313 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NewGen Academy | Ken Live</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
-        #visual-board { position: absolute; width: 100%; height: 100%; background-size: cover; background-position: center; z-index: 1; transition: 0.5s; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        
+        #visual-board { position: absolute; width: 100%; height: 100%; background-color: #111; background-size: cover; background-position: center; z-index: 1; transition: background-image 0.5s ease-in-out; }
+        
         #video-layer { position: absolute; width: 100%; height: 100%; z-index: 2; display: none; background: #000; }
-        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.7) 100%); }
-        .top-bar { padding: 20px; display: flex; justify-content: space-between; pointer-events: auto; }
-        .btn-mic { width: 80px; height: 80px; border-radius: 50%; border: none; background: #4CAF50; cursor: pointer; pointer-events: auto; margin-bottom: 30px; align-self: center; font-size: 30px; transition: 0.3s; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        .btn-mic.active { background: #f44336; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(244, 67, 54, 0.7); } 70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(244, 67, 54, 0); } 100% { transform: scale(1); } }
-        select { background: rgba(255,255,255,0.1); color: white; border: 1px solid white; padding: 10px; border-radius: 5px; cursor: pointer; }
+        #video-layer iframe { width: 100%; height: 100%; border: none; pointer-events: none; }
+        
+        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 15%, transparent 85%, rgba(0,0,0,0.8) 100%); }
+        
+        .top-bar { padding: 20px; display: flex; justify-content: space-between; align-items: center; pointer-events: auto; }
+        h1 { margin: 0; font-size: 2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
+        
+        .selectors { display: flex; gap: 15px; }
+        select { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; padding: 10px 15px; border-radius: 8px; font-size: 1.1rem; cursor: pointer; outline: none; }
+        select option { background: #222; }
+        
+        .bottom-controls { padding: 40px; display: flex; justify-content: center; pointer-events: auto; }
+        
+        .btn-mic { width: 80px; height: 80px; border-radius: 50%; border: none; background: #4CAF50; color: white; font-size: 2rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; }
+        .btn-mic.active { background: #f44336; box-shadow: 0 0 20px #f44336; animation: pulse 1.5s infinite; }
+        
+        @keyframes pulse { 
+            0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(244, 67, 54, 0.7); } 
+            70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(244, 67, 54, 0); } 
+            100% { transform: scale(1); } 
+        }
     </style>
 </head>
 <body>
-    <div id="visual-board"></div>
+
+    <div id="visual-board" style="background-image: url('https://images.unsplash.com/photo-1507413245164-6160d8298b31?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');"></div>
     <div id="video-layer"></div>
+    
     <div id="ui">
         <div class="top-bar">
-            <h2>NewGen Academy</h2>
-            <div>
-                <select id="lang"><option value="en-IN">English</option><option value="bn-IN">Bengali</option><option value="hi-IN">Hindi</option></select>
-                <select id="grade"><option>Grades 1-5</option><option>Grades 6-9</option><option>Grades 10-12</option><option>University</option></select>
+            <h1>NewGen Academy</h1>
+            <div class="selectors">
+                <select id="language-selector">
+                    <option value="en-IN">English</option>
+                    <option value="bn-IN">Bengali</option>
+                    <option value="hi-IN">Hindi</option>
+                </select>
+                <select id="grade-selector">
+                    <option value="Grades 1-5">Grades 1-5</option>
+                    <option value="Grades 6-9">Grades 6-9</option>
+                    <option value="Grades 10-12">Grades 10-12</option>
+                    <option value="Honors">Honors</option>
+                    <option value="Masters">Masters</option>
+                    <option value="Ph.D">Ph.D</option>
+                </select>
             </div>
         </div>
-        <button id="mic" class="btn-mic">🎤</button>
+        <div class="bottom-controls">
+            <button id="mic" class="btn-mic">🎤</button>
+        </div>
     </div>
 
     <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
         const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/";
-        const YT_KEY = "YOUR_YOUTUBE_API_KEY"; // Replace this!
+        const YOUTUBE_API_KEY = "PASTE_YOUR_YOUTUBE_API_KEY_HERE"; 
 
-        let live = false;
-        let history = [];
+        // State Variables
+        let isSessionLive = false;
         let recognition;
-        const mic = document.getElementById('mic');
-        const board = document.getElementById('visual-board');
-        const vLayer = document.getElementById('video-layer');
+        let conversationHistory = []; 
+        
+        // UI Elements
+        const micBtn = document.getElementById('mic');
+        const gradeSelector = document.getElementById('grade-selector');
+        const languageSelector = document.getElementById('language-selector');
+        const visualBoard = document.getElementById('visual-board');
+        const videoLayer = document.getElementById('video-layer');
 
-        // Speech setup
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
+        // ==========================================
+        // SPEECH RECOGNITION (Listening)
+        // ==========================================
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
             recognition.continuous = true;
-            recognition.interimResults = true;
-            
-            recognition.onresult = (e) => {
-                if (window.speechSynthesis.speaking) window.speechSynthesis.cancel();
-                let final = "";
-                for (let i = e.resultIndex; i < e.results.length; ++i) {
-                    if (e.results[i].isFinal) final += e.results[i][0].transcript;
-                }
-                if (final.trim()) askKen(final.trim());
-            };
-            recognition.onend = () => { if(live) recognition.start(); };
-        }
+            recognition.interimResults = true; 
+            recognition.lang = languageSelector.value;
 
-        mic.onclick = () => {
-            live = !live;
-            mic.classList.toggle('active', live);
-            if(live) { 
-                recognition.start(); 
-                speak("Welcome to NewGen Academy. I am Ken. What shall we study?");
-            } else { 
-                recognition.stop(); 
-                window.speechSynthesis.cancel();
-            }
-        };
-
-        async function askKen(text) {
-            history.push({ role: "user", content: text });
-            const res = await fetch(WORKER_URL, {
-                method: "POST",
-                body: JSON.stringify({ messages: history.slice(-6), grade: document.getElementById('grade').value, language: document.getElementById('lang').selectedOptions[0].text })
+            // Update language dynamically
+            languageSelector.addEventListener('change', () => {
+                recognition.lang = languageSelector.value;
+                if (isSessionLive) recognition.stop(); 
             });
 
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-            let fullText = "";
+            recognition.onresult = async (event) => {
+                // INSTANT INTERRUPTION: Stop Ken from talking the second the user makes a sound
+                if (window.speechSynthesis.speaking) {
+                    window.speechSynthesis.cancel();
+                }
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const chunk = decoder.decode(value);
-                
-                // Cloudflare AI sends SSE 'data: {"response": "word"}'
-                const lines = chunk.split('\n');
-                for (let line of lines) {
-                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            const word = data.response;
-                            buffer += word;
-                            fullText += word;
-
-                            // Immediate Tag Processing
-                            if (buffer.includes(']')) {
-                                processTags(fullText);
-                            }
-
-                            // Sentence Processing for Speech
-                            if (/[.?!।]\s/.test(buffer)) {
-                                speak(buffer.replace(/\[.*?\]/g, ''));
-                                buffer = "";
-                            }
-                        } catch(e){}
+                let finalTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
                     }
                 }
+
+                const userSpeech = finalTranscript.trim();
+                if (userSpeech) {
+                    await askKen(userSpeech);
+                }
+            };
+            
+            recognition.onend = () => {
+                // Keep the microphone alive during the session
+                if (isSessionLive) recognition.start();
+            };
+        } else {
+            alert("Your browser does not support real-time voice. Please use Google Chrome.");
+        }
+
+        // ==========================================
+        // SESSION CONTROL
+        // ==========================================
+        micBtn.addEventListener('click', () => {
+            if (!isSessionLive) {
+                // Start
+                isSessionLive = true;
+                conversationHistory = []; 
+                micBtn.classList.add('active');
+                recognition.start();
+                
+                const langName = languageSelector.options[languageSelector.selectedIndex].text;
+                let greeting = "Session started. Hi, I am Ken. What science topic shall we explore?";
+                if (langName === "Bengali") greeting = "সেশন শুরু হয়েছে। নমস্কার, আমি কেন। আজ আমরা বিজ্ঞানের কোন বিষয় নিয়ে আলোচনা করব?";
+                if (langName === "Hindi") greeting = "सत्र शुरू हो गया है। नमस्ते, मैं केन हूँ। आज हम विज्ञान के किस विषय पर चर्चा करेंगे?";
+                
+                queueSpeech(greeting);
+            } else {
+                // Stop
+                isSessionLive = false;
+                micBtn.classList.remove('active');
+                recognition.stop();
+                window.speechSynthesis.cancel();
+                videoLayer.style.display = 'none';
+                videoLayer.innerHTML = '';
             }
-            history.push({ role: "assistant", content: fullText.replace(/\[.*?\]/g, '') });
-        }
+        });
 
-        function processTags(str) {
-            const vid = str.match(/\[VIDEO:\s*(.*?)\]/i);
-            const img = str.match(/\[VISUAL:\s*(.*?)\]/i);
-            if (vid) playVideo(vid[1]);
-            else if (img) showImage(img[1]);
-        }
+        // ==========================================
+        // AI BRAIN CONNECTION (Streaming)
+        // ==========================================
+        async function askKen(message) {
+            const gradeLevel = gradeSelector.value;
+            const selectedLanguage = languageSelector.options[languageSelector.selectedIndex].text;
 
-        function showImage(q) {
-            vLayer.style.display = 'none';
-            vLayer.innerHTML = '';
-            board.style.backgroundImage = `url('https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1920&q=80'), url('https://loremflickr.com/1920/1080/${encodeURIComponent(q)}')`;
-        }
+            conversationHistory.push({ role: "user", content: message });
+            // Keep memory at last 10 messages to prevent overload
+            if (conversationHistory.length > 10) conversationHistory = conversationHistory.slice(-10);
 
-        async function playVideo(q) {
-            if (YT_KEY === "YOUR_YOUTUBE_API_KEY") return showImage(q);
-            const data = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${q}+science+lesson&type=video&key=${YT_KEY}`).then(r => r.json());
-            if (data.items?.[0]) {
-                vLayer.style.display = 'block';
-                vLayer.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.items[0].id.videoId}?autoplay=1&controls=0&mute=1" style="width:100%;height:100%"></iframe>`;
+            try {
+                const response = await fetch(WORKER_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        grade: gradeLevel,
+                        language: selectedLanguage,
+                        messages: conversationHistory
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let sentenceBuffer = "";
+                let fullReplyTracker = "";
+                let visualTriggered = false;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                const word = data.response;
+                                
+                                sentenceBuffer += word;
+                                fullReplyTracker += word;
+
+                                // 1. Check for Visual Tags instantly
+                                if (!visualTriggered && sentenceBuffer.includes(']')) {
+                                    const videoMatch = fullReplyTracker.match(/\[VIDEO:\s*(.*?)\]/i);
+                                    const visualMatch = fullReplyTracker.match(/\[VISUAL:\s*(.*?)\]/i);
+                                    
+                                    if (videoMatch) {
+                                        playYouTubeVideo(videoMatch[1] + " science educational animation");
+                                        visualTriggered = true;
+                                    } else if (visualMatch) {
+                                        updateVisualBoard(visualMatch[1] + " science diagram");
+                                        visualTriggered = true;
+                                    }
+                                }
+
+                                // 2. Speak sentences as soon as they end
+                                if (/[.?!।]\s/.test(sentenceBuffer) || sentenceBuffer.endsWith('\n')) {
+                                    let textToSpeak = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
+                                    if (textToSpeak) queueSpeech(textToSpeak);
+                                    sentenceBuffer = ""; 
+                                }
+                            } catch(e) { }
+                        }
+                    }
+                }
+
+                // Speak any leftover words
+                let finalSentence = sentenceBuffer.replace(/\[.*?\]/g, '').trim();
+                if (finalSentence) queueSpeech(finalSentence);
+
+                // Save full clean response to memory
+                conversationHistory.push({ role: "assistant", content: fullReplyTracker.replace(/\[.*?\]/g, '').trim() });
+
+            } catch (error) {
+                console.error("Connection error:", error);
             }
         }
 
-        function speak(t) {
-            const u = new SpeechSynthesisUtterance(t);
-            u.lang = document.getElementById('lang').value;
-            u.rate = 1.1;
-            window.speechSynthesis.speak(u);
+        // ==========================================
+        // VISUALIZATION LOGIC
+        // ==========================================
+        function updateVisualBoard(keyword) {
+            videoLayer.style.display = 'none';
+            videoLayer.innerHTML = ''; 
+            
+            const formattedKeyword = encodeURIComponent(keyword);
+            // Using a reliable placeholder fallback if Unsplash fails
+            const newImageUrl = `https://source.unsplash.com/1920x1080/?${formattedKeyword}`;
+            visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
         }
+
+        async function playYouTubeVideo(query) {
+            if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE") {
+                console.warn("No YouTube API Key. Falling back to image.");
+                updateVisualBoard(query);
+                return;
+            }
+
+            try {
+                const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`;
+                const response = await fetch(searchUrl);
+                const data = await response.json();
+
+                if (data.items && data.items.length > 0) {
+                    const videoId = data.items[0].id.videoId;
+                    visualBoard.style.backgroundImage = 'none';
+                    videoLayer.style.display = 'block';
+                    
+                    videoLayer.innerHTML = `
+                        <iframe 
+                            src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&loop=1&playlist=${videoId}" 
+                            allow="autoplay; encrypted-media" 
+                            allowfullscreen>
+                        </iframe>
+                    `;
+                } else {
+                    updateVisualBoard(query); // Fallback if no video found
+                }
+            } catch (error) {
+                console.error("YouTube search failed:", error);
+                updateVisualBoard(query); // Fallback on error
+            }
+        }
+
+        // ==========================================
+        // TEXT TO SPEECH (Speaking)
+        // ==========================================
+        function queueSpeech(text) {
+            if (!isSessionLive || !text) return;
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voices = window.speechSynthesis.getVoices();
+            const currentLangCode = languageSelector.value; 
+            
+            // Try strict match
+            let kenVoice = voices.find(v => v.lang === currentLangCode || v.lang.replace('_', '-') === currentLangCode);
+            
+            // Try loose match (e.g. any 'en', 'hi', or 'bn' voice)
+            if (!kenVoice) {
+                const baseLang = currentLangCode.split('-')[0];
+                kenVoice = voices.find(v => v.lang.startsWith(baseLang));
+            }
+            
+            if (kenVoice) utterance.voice = kenVoice;
+            
+            utterance.rate = 1.0;
+            utterance.pitch = 0.9;
+            
+            window.speechSynthesis.speak(utterance);
+        }
+        
+        window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.getVoices();
+        };
     </script>
 </body>
 </html>
