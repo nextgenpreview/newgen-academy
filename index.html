@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NewGen Academy | Ken the Science Tutor</title>
+    <link rel="icon" href="data:,"> 
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; overflow: hidden; background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); font-family: sans-serif; user-select: none; }
         
-        /* Visual Containers */
         #svg-container, #image-container, #youtube-container { 
             width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 2; 
             display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); 
@@ -20,7 +20,6 @@
         
         .loading-text { position: absolute; color: #00bfa5; font-size: 1.5rem; font-weight: bold; letter-spacing: 2px; animation: pulse 1.5s infinite; z-index: 1; }
         
-        /* UI & Buttons */
         .ui-layer { position: relative; z-index: 10; pointer-events: none; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
         .interactive { pointer-events: auto; }
         
@@ -80,7 +79,6 @@
         const statusText = document.getElementById('status-text');
         const liveTranscriptUI = document.getElementById('live-transcript');
 
-        // Phase 1 Visuals (SVG Animation or Static Image)
         function renderPrimaryVisual(aiData) {
             svgContainer.style.display = 'none';
             imageContainer.style.display = 'none';
@@ -90,7 +88,7 @@
             let vType = (aiData.primary_visual_type || "").toLowerCase();
 
             if (vType === 'svg') {
-                svgContainer.innerHTML = aiData.primary_visual_data; // Injects the animation code
+                svgContainer.innerHTML = aiData.primary_visual_data; 
                 svgContainer.style.display = 'flex';
             } else {
                 imageContainer.style.display = 'flex';
@@ -99,7 +97,6 @@
             }
         }
 
-        // Phase 3 Visuals (YouTube)
         function renderYouTube(youtubeId) {
             svgContainer.style.display = 'none';
             imageContainer.style.display = 'none'; 
@@ -107,7 +104,6 @@
             youtubeIframe.src = `https://www.youtube.com/embed/${youtubeId}?autoplay=1`;
         }
 
-        // --- WALKIE-TALKIE LOGIC ---
         const micBtn = document.getElementById('mic-btn');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const synth = window.speechSynthesis;
@@ -168,23 +164,24 @@
                 }
 
                 const data = await response.json();
-                let start = data.result.indexOf('{');
-                let end = data.result.lastIndexOf('}');
-                let cleanJsonString = data.result.substring(start, end + 1).replace(/[\u0000-\u001F]+/g, " ");
+                
+                // Extra strong JSON sanitizer for SVG quotes
+                let rawString = data.result;
+                let start = rawString.indexOf('{');
+                let end = rawString.lastIndexOf('}');
+                let cleanJsonString = rawString.substring(start, end + 1).replace(/[\u0000-\u001F]+/g, " ");
                 const aiData = JSON.parse(cleanJsonString);
                 
-                // Show the Animation/Image instantly
                 renderPrimaryVisual(aiData);
                 
                 const utterance1 = new SpeechSynthesisUtterance(aiData.explanation);
                 utterance1.lang = document.getElementById('lang-select').value;
                 
-                const utterance2 = new SpeechSynthesisUtterance(aiData.transition_phrase);
+                const utterance2 = new SpeechSynthesisUtterance(aiData.transition_phrase || "Let's watch a video.");
                 utterance2.lang = document.getElementById('lang-select').value;
 
                 utterance1.onstart = () => setUIState('speaking');
                 
-                // When explanation ends, transition to YouTube!
                 utterance1.onend = () => {
                     if (!isInterrupted) {
                         if (aiData.youtube_id) renderYouTube(aiData.youtube_id);
@@ -194,7 +191,6 @@
                 
                 utterance2.onend = () => setUIState('idle'); 
                 
-                // Start speaking out loud while the animation is playing
                 synth.speak(utterance1);
 
             } catch (error) {
@@ -213,7 +209,6 @@
             liveTranscriptUI.innerText = fullTranscript;
         };
 
-        // Input Controls
         micBtn.addEventListener('mousedown', startWalkieTalkie);
         window.addEventListener('mouseup', stopWalkieTalkie);
         micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startWalkieTalkie(); });
