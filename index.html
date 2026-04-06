@@ -29,6 +29,23 @@
             background-image: url('https://images.unsplash.com/photo-1507413245164-6160d8298b31?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
             transition: background-image 1s ease-in-out;
             z-index: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Container for YouTube Iframe */
+        #video-container {
+            width: 100%;
+            height: 100%;
+            display: none; /* Hidden by default */
+        }
+        
+        #video-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            pointer-events: none; /* Prevents user from clicking/pausing the video manually */
         }
 
         /* UI Overlay */
@@ -73,10 +90,6 @@
             outline: none;
         }
 
-        select option {
-            background: #222;
-        }
-
         .controls {
             padding: 40px;
             display: flex;
@@ -117,7 +130,9 @@
 </head>
 <body>
 
-    <div id="visual-board"></div>
+    <div id="visual-board">
+        <div id="video-container"></div>
+    </div>
 
     <div id="ui-layer">
         <div class="header">
@@ -149,6 +164,9 @@
         // CONFIGURATION
         // ==========================================
         const WORKER_URL = "https://newgen-brain.newpreviewgen.workers.dev/";
+        
+        // GET A FREE KEY: Go to Google Cloud Console -> Enable YouTube Data API v3 -> Generate Credentials
+        const YOUTUBE_API_KEY = "AIzaSyBoIWaJcPclV4dR9Pi9KPNUsS1kR3SSbZ0"; 
 
         // State Variables
         let isSessionLive = false;
@@ -159,6 +177,7 @@
         const gradeSelector = document.getElementById('grade-selector');
         const languageSelector = document.getElementById('language-selector');
         const visualBoard = document.getElementById('visual-board');
+        const videoContainer = document.getElementById('video-container');
 
         // ==========================================
         // SPEECH RECOGNITION (Browser Native)
@@ -167,43 +186,30 @@
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
             recognition.continuous = true;
-            
-            // CHANGED: Enable interim results to detect interruptions instantly
             recognition.interimResults = true; 
-            
             recognition.lang = languageSelector.value;
 
             languageSelector.addEventListener('change', () => {
                 recognition.lang = languageSelector.value;
-                if (isSessionLive) {
-                    recognition.stop(); 
-                }
+                if (isSessionLive) recognition.stop(); 
             });
 
             recognition.onresult = async (event) => {
-                // INTERRUPT LOGIC: As soon as the mic picks up sound, stop Ken from speaking
                 if (window.speechSynthesis.speaking) {
                     window.speechSynthesis.cancel();
                 }
 
                 let finalTranscript = '';
-                
-                // Loop through results to separate interim (interruption noise) from final sentences
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
                         finalTranscript += event.results[i][0].transcript;
                     }
                 }
 
-                // Only send the fully completed sentence to the AI
                 const userSpeech = finalTranscript.trim();
                 if (userSpeech) {
                     await askKen(userSpeech);
                 }
-            };
-
-            recognition.onerror = (event) => {
-                console.error("Speech recognition error:", event.error);
             };
             
             recognition.onend = () => {
@@ -269,27 +275,77 @@
         }
 
         // ==========================================
-        // RESPONSE PARSING & VISUALIZATION
+        // RESPONSE PARSING & VISUALIZATION (Images & YouTube)
         // ==========================================
         function handleKenResponse(replyText) {
             if (!replyText) return;
             
+            // Look for either [VISUAL: ...] or [VIDEO: ...]
             const visualMatch = replyText.match(/\[VISUAL:\s*(.*?)\]/i);
+            const videoMatch = replyText.match(/\[VIDEO:\s*(.*?)\]/i);
+            
             let spokenText = replyText;
 
-            if (visualMatch && visualMatch[1]) {
+            if (videoMatch && videoMatch[1]) {
+                // Handle Video Request
+                const searchKeyword = videoMatch[1];
+                playYouTubeVideo(searchKeyword + " science educational");
+                spokenText = replyText.replace(videoMatch[0], '').trim(); 
+                
+            } else if (visualMatch && visualMatch[1]) {
+                // Handle Image Request
                 const searchKeyword = visualMatch[1];
                 updateVisualBoard(searchKeyword + " science");
                 spokenText = replyText.replace(visualMatch[0], '').trim(); 
             }
 
+            // Remove any leftover tags just in case AI messes up format
+            spokenText = spokenText.replace(/\[.*?\]/g, '');
             speakOutLoud(spokenText);
         }
 
         function updateVisualBoard(keyword) {
+            // Hide Video, Show Image
+            videoContainer.style.display = 'none';
+            videoContainer.innerHTML = ''; 
+            
             const formattedKeyword = encodeURIComponent(keyword);
             const newImageUrl = `https://source.unsplash.com/1920x1080/?${formattedKeyword}`;
             visualBoard.style.backgroundImage = `url('${newImageUrl}')`;
+        }
+
+        async function playYouTubeVideo(query) {
+            if (YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE") {
+                console.error("Missing YouTube API Key. Cannot load video.");
+                return;
+            }
+
+            try {
+                // Search YouTube API for the top result
+                const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`;
+                const response = await fetch(searchUrl);
+                const data = await response.json();
+
+                if (data.items && data.items.length > 0) {
+                    const videoId = data.items[0].id.videoId;
+                    
+                    // Clear background image, show video container
+                    visualBoard.style.backgroundImage = 'none';
+                    videoContainer.style.display = 'block';
+                    
+                    // Embed video (autoplay, muted, no controls for a cinematic background feel)
+                    // Note: Browsers require autoplaying videos to be muted. Ken's voice will play over it.
+                    videoContainer.innerHTML = `
+                        <iframe 
+                            src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&loop=1&playlist=${videoId}" 
+                            allow="autoplay; encrypted-media" 
+                            allowfullscreen>
+                        </iframe>
+                    `;
+                }
+            } catch (error) {
+                console.error("YouTube search failed:", error);
+            }
         }
 
         // ==========================================
@@ -298,7 +354,6 @@
         function speakOutLoud(text) {
             if (!isSessionLive || !text) return;
             
-            // Double check cancellation before starting new speech
             window.speechSynthesis.cancel(); 
 
             const utterance = new SpeechSynthesisUtterance(text);
